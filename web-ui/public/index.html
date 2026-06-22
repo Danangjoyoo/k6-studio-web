@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>k6 Studio</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --panel: #252526;
+      --border: #3c3c3c;
+      --text: #d4d4d4;
+      --muted: #9da5b4;
+      --accent: #0e639c;
+      --accent-hover: #1177bb;
+      --danger: #c72e2e;
+      --danger-hover: #e03e3e;
+      --success: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 1rem;
+    }
+    .title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .title-row h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .script-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .dirty-dot { color: #f0ad4e; display: none; }
+    .dirty-dot.visible { display: inline; }
+    .unsaved-label { display: none; font-size: 0.8rem; }
+    .unsaved-label.visible { display: inline; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .toolbar .sep {
+      width: 1px;
+      height: 1.2rem;
+      background: var(--border);
+      margin: 0 0.25rem;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.danger { background: var(--danger); }
+    button.danger:hover:not(:disabled) { background: var(--danger-hover); }
+    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    button.ghost:hover:not(:disabled) { background: #2a2d2e; }
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      grid-template-rows: 1fr 220px;
+      min-height: 0;
+    }
+    .sidebar {
+      grid-row: 1 / 3;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 0.5rem 0;
+    }
+    .sidebar h2 {
+      margin: 0 0 0.5rem;
+      padding: 0 0.75rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .script-list { list-style: none; margin: 0; padding: 0; }
+    .script-list li button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      color: var(--text);
+      border-radius: 0;
+      padding: 0.45rem 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .script-list li button:hover { background: #2a2d2e; }
+    .script-list li.active button { background: #094771; }
+    .script-list .delete-btn {
+      opacity: 0;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.75rem;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+    }
+    .script-list li:hover .delete-btn { opacity: 1; }
+    #editor {
+      min-height: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .output-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: #111;
+    }
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.35rem 0.75rem;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    #output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .status-badge {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .status-badge.running { color: var(--success); }
+    .status-badge.failed { color: #f85149; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      min-width: 320px;
+      max-width: 90vw;
+    }
+    .modal h3 { margin: 0 0 0.75rem; font-size: 1rem; }
+    .modal p { margin: 0 0 1rem; color: var(--muted); font-size: 0.9rem; }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+    .modal input {
+      width: 100%;
+      margin-bottom: 1rem;
+      padding: 0.45rem 0.6rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: #1e1e1e;
+      color: var(--text);
+    }
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: #2d333b;
+      border: 1px solid var(--border);
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      display: none;
+      z-index: 200;
+    }
+    .toast.show { display: block; }
+    .shortcuts-popover {
+      position: absolute;
+      top: 2.5rem;
+      right: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      display: none;
+      z-index: 50;
+      min-width: 220px;
+    }
+    .shortcuts-popover.open { display: block; }
+    .shortcuts-popover dl { margin: 0; }
+    .shortcuts-popover dt { font-weight: 600; margin-top: 0.35rem; }
+    .shortcuts-popover dd { margin: 0.15rem 0 0; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-row">
+      <div class="script-meta">
+        <h1>k6 Studio</h1>
+        <span id="current-script-name">—</span>
+        <span id="dirty-dot" class="dirty-dot" aria-hidden="true">•</span>
+        <span id="unsaved-label" class="unsaved-label">Unsaved</span>
+      </div>
+      <button type="button" id="help-btn" class="ghost" aria-label="Keyboard shortcuts">?</button>
+    </div>
+    <div class="toolbar">
+      <button type="button" id="new-btn">New</button>
+      <button type="button" id="save-btn">Save</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="run-btn"><span aria-hidden="true">▶</span> Run</button>
+      <button type="button" id="stop-btn" disabled><span aria-hidden="true">■</span> Stop</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" id="dashboard-btn" disabled aria-label="Dashboard (opens new tab)">Dashboard</button>
+    </div>
+    <div id="shortcuts-popover" class="shortcuts-popover" role="region" aria-label="Keyboard shortcuts">
+      <dl>
+        <dt>Save</dt><dd>Cmd/Ctrl + S</dd>
+        <dt>Run</dt><dd>Cmd/Ctrl + Enter</dd>
+        <dt>Close modal</dt><dd>Escape</dd>
+      </dl>
+    </div>
+  </header>
+
+  <div class="main">
+    <aside class="sidebar">
+      <h2>Scripts</h2>
+      <ul id="script-list" class="script-list"></ul>
+    </aside>
+    <div id="editor"></div>
+    <section class="output-panel" aria-label="Test output">
+      <div class="output-header">
+        <span>Output</span>
+        <div>
+          <span id="run-status" class="status-badge">idle</span>
+          <button type="button" id="clear-output-btn" class="ghost">Clear</button>
+        </div>
+      </div>
+      <div id="output" role="log" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <div id="delete-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+    <div class="modal">
+      <h3 id="delete-title">Delete script?</h3>
+      <p id="delete-message"></p>
+      <div class="modal-actions">
+        <button type="button" id="delete-cancel-btn" class="ghost">Cancel</button>
+        <button type="button" id="delete-confirm-btn" class="danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="switch-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="switch-title">
+    <div class="modal">
+      <h3 id="switch-title">Unsaved changes</h3>
+      <p id="switch-message"></p>
+      <div class="modal-actions">
+        <button type="button" id="switch-discard-btn" class="ghost">Discard</button>
+        <button type="button" id="switch-save-btn">Save &amp; Switch</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="new-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="new-title">
+    <div class="modal">
+      <h3 id="new-title">New script</h3>
+      <label for="new-script-name" class="sr-only">Script name</label>
+      <input id="new-script-name" type="text" placeholder="my-test" autocomplete="off">
+      <div class="modal-actions">
+        <button type="button" id="new-cancel-btn" class="ghost">Cancel</button>
+        <button type="button" id="new-confirm-btn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="./monaco-editor/vs/loader.js"></script>
+  <script>
+    const BOILERPLATE = `import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+const TARGET_URL = __ENV.K6_TARGET_URL || 'http://host.docker.internal:8084/healthz';
+
+export const options = {
+  vus: 10,
+  duration: '30s',
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.01'],
+    http_reqs: ['rate>0'],
+  },
+};
+
+export function handleSummary(data) {
+  const ts = __ENV.K6_RUN_TIMESTAMP || (() => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return \`\${now.getFullYear()}\${pad(now.getMonth() + 1)}\${pad(now.getDate())}T\${pad(now.getHours())}\${pad(now.getMinutes())}\${pad(now.getSeconds())}\`;
+  })();
+  return { [\`/tests/reports/summary-\${ts}.json\`]: JSON.stringify(data, null, 2) };
+}
+
+export default function () {
+  const res = http.get(TARGET_URL);
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 1s': (r) => r.timings.duration < 1000,
+  });
+  sleep(1);
+}
+`;
+
+    let editor = null;
+    let currentScript = null;
+    let savedContent = '';
+    let isDirty = false;
+    let isRunning = false;
+    let eventSource = null;
+    let autoScroll = true;
+    let pendingSwitch = null;
+    let pendingDelete = null;
+    let focusTrapHandler = null;
+
+    const els = {
+      scriptList: document.getElementById('script-list'),
+      currentName: document.getElementById('current-script-name'),
+      dirtyDot: document.getElementById('dirty-dot'),
+      unsavedLabel: document.getElementById('unsaved-label'),
+      output: document.getElementById('output'),
+      runStatus: document.getElementById('run-status'),
+      runBtn: document.getElementById('run-btn'),
+      stopBtn: document.getElementById('stop-btn'),
+      saveBtn: document.getElementById('save-btn'),
+      newBtn: document.getElementById('new-btn'),
+      dashboardBtn: document.getElementById('dashboard-btn'),
+      clearOutputBtn: document.getElementById('clear-output-btn'),
+      helpBtn: document.getElementById('help-btn'),
+      shortcuts: document.getElementById('shortcuts-popover'),
+      toast: document.getElementById('toast'),
+      deleteModal: document.getElementById('delete-modal'),
+      deleteMessage: document.getElementById('delete-message'),
+      deleteCancel: document.getElementById('delete-cancel-btn'),
+      deleteConfirm: document.getElementById('delete-confirm-btn'),
+      switchModal: document.getElementById('switch-modal'),
+      switchMessage: document.getElementById('switch-message'),
+      switchDiscard: document.getElementById('switch-discard-btn'),
+      switchSave: document.getElementById('switch-save-btn'),
+      newModal: document.getElementById('new-modal'),
+      newName: document.getElementById('new-script-name'),
+      newCancel: document.getElementById('new-cancel-btn'),
+      newConfirm: document.getElementById('new-confirm-btn'),
+    };
+
+    function showToast(message) {
+      els.toast.textContent = message;
+      els.toast.classList.add('show');
+      setTimeout(() => els.toast.classList.remove('show'), 3000);
+    }
+
+    function setDirty(dirty) {
+      isDirty = dirty;
+      els.dirtyDot.classList.toggle('visible', dirty);
+      els.unsavedLabel.classList.toggle('visible', dirty);
+    }
+
+    function setRunning(running) {
+      isRunning = running;
+      els.runBtn.disabled = running;
+      els.stopBtn.disabled = !running;
+      els.dashboardBtn.disabled = !running;
+      els.runStatus.textContent = running ? 'running…' : els.runStatus.textContent;
+      els.runStatus.classList.toggle('running', running);
+    }
+
+    function appendOutput(line) {
+      els.output.textContent += (els.output.textContent ? '\n' : '') + line;
+      if (autoScroll) els.output.scrollTop = els.output.scrollHeight;
+    }
+
+    function clearOutput() {
+      els.output.textContent = '';
+      els.runStatus.textContent = 'idle';
+      els.runStatus.classList.remove('running', 'failed');
+    }
+
+    function trapFocus(modal, initialFocus) {
+      const focusable = modal.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])');
+      const items = Array.from(focusable);
+      initialFocus.focus();
+      focusTrapHandler = (e) => {
+        if (e.key !== 'Tab' || !modal.classList.contains('open')) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      document.addEventListener('keydown', focusTrapHandler);
+    }
+
+    function releaseFocusTrap() {
+      if (focusTrapHandler) {
+        document.removeEventListener('keydown', focusTrapHandler);
+        focusTrapHandler = null;
+      }
+    }
+
+    function openModal(modal, initialFocus) {
+      modal.classList.add('open');
+      trapFocus(modal, initialFocus);
+    }
+
+    function closeModal(modal) {
+      modal.classList.remove('open');
+      releaseFocusTrap();
+    }
+
+    async function fetchScripts() {
+      const res = await fetch('/api/scripts');
+      return res.json();
+    }
+
+    async function loadScript(name) {
+      const res = await fetch(`/api/scripts/${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error('Failed to load script');
+      const content = await res.text();
+      currentScript = name;
+      savedContent = content;
+      editor.setValue(content);
+      setDirty(false);
+      els.currentName.textContent = name;
+      renderScriptList(await fetchScripts());
+    }
+
+    async function saveScript() {
+      if (!currentScript) return;
+      const content = editor.getValue();
+      const res = await fetch(`/api/scripts/${encodeURIComponent(currentScript)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        showToast('Save failed');
+        return false;
+      }
+      savedContent = content;
+      setDirty(false);
+      showToast('Saved');
+      return true;
+    }
+
+    function renderScriptList(scripts) {
+      els.scriptList.innerHTML = '';
+      for (const name of scripts) {
+        const li = document.createElement('li');
+        if (name === currentScript) li.classList.add('active');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = name.replace(/\.js$/, '');
+        btn.addEventListener('click', () => switchToScript(name));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'delete-btn';
+        del.setAttribute('aria-label', `Delete ${name}`);
+        del.textContent = '×';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          pendingDelete = name;
+          els.deleteMessage.textContent = `Delete '${name}'? This cannot be undone.`;
+          openModal(els.deleteModal, els.deleteCancel);
+        });
+        li.appendChild(btn);
+        li.appendChild(del);
+        els.scriptList.appendChild(li);
+      }
+    }
+
+    async function switchToScript(name) {
+      if (name === currentScript) return;
+      if (isDirty) {
+        pendingSwitch = name;
+        els.switchMessage.textContent = `Save changes to '${currentScript}' before switching?`;
+        openModal(els.switchModal, els.switchDiscard);
+        return;
+      }
+      await loadScript(name);
+    }
+
+    function connectEventSource(url) {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(url);
+      eventSource.onmessage = (e) => appendOutput(e.data);
+      eventSource.addEventListener('done', (e) => {
+        const data = JSON.parse(e.data);
+        setRunning(false);
+        els.runStatus.textContent = data.exitCode === 0 ? 'completed' : `failed (${data.exitCode})`;
+        els.runStatus.classList.toggle('failed', data.exitCode !== 0);
+        eventSource.close();
+        eventSource = null;
+      });
+      eventSource.addEventListener('error', (e) => {
+        if (e.data) {
+          const data = JSON.parse(e.data);
+          appendOutput(`[error] ${data.message}`);
+        }
+        setRunning(false);
+        eventSource?.close();
+        eventSource = null;
+      });
+      eventSource.onerror = () => {
+        if (!isRunning) {
+          eventSource?.close();
+          eventSource = null;
+        }
+      };
+    }
+
+    async function runTest() {
+      if (!currentScript || isRunning) return;
+      if (isDirty) {
+        const saved = await saveScript();
+        if (!saved) return;
+      }
+      clearOutput();
+      setRunning(true);
+      els.runStatus.textContent = 'starting…';
+
+      const res = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: currentScript }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        appendOutput(`[error] ${err.message || err.error || res.statusText}`);
+        setRunning(false);
+        els.runStatus.textContent = 'failed';
+        els.runStatus.classList.add('failed');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          if (part.startsWith(':')) continue;
+          if (part.startsWith('event: done')) {
+            const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+            if (dataLine) {
+              const data = JSON.parse(dataLine.slice(6));
+              setRunning(false);
+              els.runStatus.textContent = data.exitCode === 0 ? 'completed' : `failed (${data.exitCode})`;
+              els.runStatus.classList.toggle('failed', data.exitCode !== 0);
+            }
+          } else if (part.startsWith('event: error')) {
+            const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+            if (dataLine) {
+              const data = JSON.parse(dataLine.slice(6));
+              appendOutput(`[error] ${data.message}`);
+            }
+            setRunning(false);
+          } else if (part.startsWith('data: ')) {
+            appendOutput(part.slice(6));
+          }
+        }
+      }
+    }
+
+    async function stopTest() {
+      await fetch('/api/stop', { method: 'POST' });
+      setRunning(false);
+      els.runStatus.textContent = 'stopped';
+    }
+
+    async function createScript() {
+      const raw = els.newName.value.trim();
+      if (!raw) return;
+      const name = raw.endsWith('.js') ? raw : `${raw}.js`;
+      if (!/^[a-zA-Z0-9_-]+\.js$/.test(name)) {
+        showToast('Invalid script name');
+        return;
+      }
+      const res = await fetch(`/api/scripts/${encodeURIComponent(name)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: BOILERPLATE }),
+      });
+      if (!res.ok) {
+        showToast('Create failed');
+        return;
+      }
+      closeModal(els.newModal);
+      const scripts = await fetchScripts();
+      renderScriptList(scripts);
+      await loadScript(name);
+    }
+
+    async function deleteScript() {
+      if (!pendingDelete) return;
+      const res = await fetch(`/api/scripts/${encodeURIComponent(pendingDelete)}`, { method: 'DELETE' });
+      closeModal(els.deleteModal);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Delete failed');
+        pendingDelete = null;
+        return;
+      }
+      const wasCurrent = pendingDelete === currentScript;
+      pendingDelete = null;
+      const scripts = await fetchScripts();
+      renderScriptList(scripts);
+      if (wasCurrent) {
+        if (scripts.length) await loadScript(scripts[0]);
+        else {
+          currentScript = null;
+          editor.setValue('');
+          els.currentName.textContent = '—';
+        }
+      }
+    }
+
+    async function initFromStatus() {
+      const statusRes = await fetch('/api/status');
+      const status = await statusRes.json();
+      if (status.status === 'running') {
+        const outputRes = await fetch('/api/output');
+        const output = await outputRes.json();
+        for (const line of output.lines) appendOutput(line);
+        setRunning(true);
+        connectEventSource('/api/stream');
+      }
+    }
+
+    require.config({ paths: { vs: './monaco-editor/vs' } });
+    require(['vs/editor/editor.main'], async () => {
+      editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '',
+        language: 'javascript',
+        theme: 'vs-dark',
+        automaticLayout: true,
+        minimap: { enabled: false },
+        fontSize: 13,
+      });
+
+      editor.onDidChangeModelContent(() => {
+        setDirty(editor.getValue() !== savedContent);
+      });
+
+      const scripts = await fetchScripts();
+      renderScriptList(scripts);
+      if (scripts.length) await loadScript(scripts[0]);
+      await initFromStatus();
+    });
+
+    els.saveBtn.addEventListener('click', () => saveScript());
+    els.newBtn.addEventListener('click', () => {
+      els.newName.value = '';
+      openModal(els.newModal, els.newName);
+    });
+    els.runBtn.addEventListener('click', () => runTest());
+    els.stopBtn.addEventListener('click', () => stopTest());
+    els.dashboardBtn.addEventListener('click', () => {
+      window.open('http://localhost:5665', '_blank', 'noopener');
+      showToast('Dashboard opened in a new tab');
+    });
+    els.clearOutputBtn.addEventListener('click', clearOutput);
+    els.helpBtn.addEventListener('click', () => els.shortcuts.classList.toggle('open'));
+
+    els.deleteCancel.addEventListener('click', () => {
+      pendingDelete = null;
+      closeModal(els.deleteModal);
+    });
+    els.deleteConfirm.addEventListener('click', deleteScript);
+
+    els.switchDiscard.addEventListener('click', async () => {
+      const target = pendingSwitch;
+      pendingSwitch = null;
+      closeModal(els.switchModal);
+      if (target) await loadScript(target);
+    });
+    els.switchSave.addEventListener('click', async () => {
+      const target = pendingSwitch;
+      const saved = await saveScript();
+      if (!saved) return;
+      pendingSwitch = null;
+      closeModal(els.switchModal);
+      if (target) await loadScript(target);
+    });
+
+    els.newCancel.addEventListener('click', () => closeModal(els.newModal));
+    els.newConfirm.addEventListener('click', createScript);
+    els.newName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createScript();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 's') {
+        e.preventDefault();
+        saveScript();
+      }
+      if (mod && e.key === 'Enter' && !isRunning) {
+        e.preventDefault();
+        runTest();
+      }
+      if (e.key === 'Escape') {
+        [els.deleteModal, els.switchModal, els.newModal].forEach((m) => {
+          if (m.classList.contains('open')) closeModal(m);
+        });
+        els.shortcuts.classList.remove('open');
+      }
+    });
+
+    els.output.addEventListener('scroll', () => {
+      const atBottom = els.output.scrollHeight - els.output.scrollTop - els.output.clientHeight < 24;
+      autoScroll = atBottom;
+    });
+  </script>
+</body>
+</html>

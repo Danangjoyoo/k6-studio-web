@@ -1,0 +1,15 @@
+{
+  "name": "k6-web-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-based k6 load test platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dockerode": "^4.0.4",
+    "express": "^4.21.2",
+    "monaco-editor": "^0.52.2"
+  }
+}

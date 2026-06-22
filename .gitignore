@@ -1,0 +1,4 @@
+tests/reports/*.html
+tests/reports/*.json
+.env
+web-ui/node_modules/
