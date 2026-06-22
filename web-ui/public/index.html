@@ -548,7 +548,13 @@ export default function () {
     autoScroll=el.output.scrollHeight-el.output.scrollTop-el.output.clientHeight<24;
   });
 
-  require.config({paths:{vs:'./monaco-editor/vs'}});
+  // Use absolute paths so Monaco web workers (created from blob: URLs) can resolve modules
+  window.MonacoEnvironment = {
+    getWorkerUrl: function() {
+      return window.location.origin + '/monaco-editor/vs/base/worker/workerMain.js';
+    }
+  };
+  require.config({paths:{vs:window.location.origin+'/monaco-editor/vs'}});
   require(['vs/editor/editor.main'],async()=>{
     editor=monaco.editor.create(document.getElementById('editor'),{
       value:'',language:'javascript',theme:'vs-dark',
