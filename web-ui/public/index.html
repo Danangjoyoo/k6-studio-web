@@ -6,223 +6,72 @@
   <title>k6 Studio</title>
   <style>
     :root {
-      --bg: #1e1e1e;
-      --panel: #252526;
-      --border: #3c3c3c;
-      --text: #d4d4d4;
-      --muted: #9da5b4;
-      --accent: #0e639c;
-      --accent-hover: #1177bb;
-      --danger: #c72e2e;
-      --danger-hover: #e03e3e;
-      --success: #3fb950;
+      --bg:#1e1e1e;--panel:#252526;--border:#3c3c3c;
+      --text:#d4d4d4;--muted:#9da5b4;--accent:#0e639c;
+      --accent-hover:#1177bb;--danger:#c72e2e;--danger-hover:#e03e3e;
+      --success:#3fb950;--warn:#f0ad4e;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    header {
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-      padding: 0.5rem 1rem;
-    }
-    .title-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.5rem;
-    }
-    .title-row h1 {
-      margin: 0;
-      font-size: 1.1rem;
-      font-weight: 600;
-    }
-    .script-meta {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-    .dirty-dot { color: #f0ad4e; display: none; }
-    .dirty-dot.visible { display: inline; }
-    .unsaved-label { display: none; font-size: 0.8rem; }
-    .unsaved-label.visible { display: inline; }
-    .toolbar {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-    }
-    .toolbar .sep {
-      width: 1px;
-      height: 1.2rem;
-      background: var(--border);
-      margin: 0 0.25rem;
-    }
-    button {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      padding: 0.35rem 0.75rem;
-      font-size: 0.85rem;
-      cursor: pointer;
-    }
-    button:hover:not(:disabled) { background: var(--accent-hover); }
-    button:disabled { opacity: 0.45; cursor: not-allowed; }
-    button.danger { background: var(--danger); }
-    button.danger:hover:not(:disabled) { background: var(--danger-hover); }
-    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    button.ghost:hover:not(:disabled) { background: #2a2d2e; }
-    .main {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 200px 1fr;
-      grid-template-rows: 1fr 220px;
-      min-height: 0;
-    }
-    .sidebar {
-      grid-row: 1 / 3;
-      background: var(--panel);
-      border-right: 1px solid var(--border);
-      overflow-y: auto;
-      padding: 0.5rem 0;
-    }
-    .sidebar h2 {
-      margin: 0 0 0.5rem;
-      padding: 0 0.75rem;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--muted);
-    }
-    .script-list { list-style: none; margin: 0; padding: 0; }
-    .script-list li button {
-      width: 100%;
-      text-align: left;
-      background: transparent;
-      color: var(--text);
-      border-radius: 0;
-      padding: 0.45rem 0.75rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .script-list li button:hover { background: #2a2d2e; }
-    .script-list li.active button { background: #094771; }
-    .script-list .delete-btn {
-      opacity: 0;
-      padding: 0.1rem 0.35rem;
-      font-size: 0.75rem;
-      background: transparent;
-      border: none;
-      color: var(--muted);
-    }
-    .script-list li:hover .delete-btn { opacity: 1; }
-    #editor {
-      min-height: 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .output-panel {
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      background: #111;
-    }
-    .output-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.35rem 0.75rem;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-      font-size: 0.85rem;
-    }
-    #output {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0.5rem 0.75rem;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 0.8rem;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .status-badge {
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-    .status-badge.running { color: var(--success); }
-    .status-badge.failed { color: #f85149; }
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.55);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-    }
-    .modal-backdrop.open { display: flex; }
-    .modal {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      min-width: 320px;
-      max-width: 90vw;
-    }
-    .modal h3 { margin: 0 0 0.75rem; font-size: 1rem; }
-    .modal p { margin: 0 0 1rem; color: var(--muted); font-size: 0.9rem; }
-    .modal-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 0.5rem;
-    }
-    .modal input {
-      width: 100%;
-      margin-bottom: 1rem;
-      padding: 0.45rem 0.6rem;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      background: #1e1e1e;
-      color: var(--text);
-    }
-    .toast {
-      position: fixed;
-      bottom: 1rem;
-      right: 1rem;
-      background: #2d333b;
-      border: 1px solid var(--border);
-      padding: 0.6rem 1rem;
-      border-radius: 6px;
-      display: none;
-      z-index: 200;
-    }
-    .toast.show { display: block; }
-    .shortcuts-popover {
-      position: absolute;
-      top: 2.5rem;
-      right: 1rem;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.75rem 1rem;
-      font-size: 0.85rem;
-      display: none;
-      z-index: 50;
-      min-width: 220px;
-    }
-    .shortcuts-popover.open { display: block; }
-    .shortcuts-popover dl { margin: 0; }
-    .shortcuts-popover dt { font-weight: 600; margin-top: 0.35rem; }
-    .shortcuts-popover dd { margin: 0.15rem 0 0; color: var(--muted); }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+    header{background:var(--panel);border-bottom:1px solid var(--border);padding:.5rem 1rem;position:relative}
+    .title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+    .title-row h1{margin:0;font-size:1.1rem;font-weight:600}
+    .script-meta{display:flex;align-items:center;gap:.5rem;color:var(--muted);font-size:.9rem}
+    .unsaved-label{display:none;font-size:.8rem;color:var(--warn)}
+    .unsaved-label.visible{display:inline}
+    .toolbar{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .sep{width:1px;height:1.2rem;background:var(--border);margin:0 .25rem}
+    button{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:.35rem .75rem;font-size:.85rem;cursor:pointer}
+    button:hover:not(:disabled){background:var(--accent-hover)}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    button.danger{background:var(--danger)}
+    button.danger:hover:not(:disabled){background:var(--danger-hover)}
+    button.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+    button.ghost:hover:not(:disabled){background:#2a2d2e}
+    button:focus-visible,.tree-item:focus-visible{outline:2px solid #0e639c;outline-offset:2px}
+    .status-badge{font-size:.75rem;padding:.2rem .5rem;border-radius:3px;background:#333;color:var(--muted)}
+    .status-badge.running{background:#0d3d1f;color:var(--success)}
+    .status-badge.stopping{background:#3d2a00;color:var(--warn)}
+    .status-badge.failed{background:#3d0d0d;color:#f85149}
+    .main{flex:1;display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr 200px;min-height:0}
+    .sidebar{grid-row:1/3;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+    .sidebar-section{padding:.5rem 0}
+    .sidebar-section+.sidebar-section{border-top:1px solid var(--border)}
+    .section-header{display:flex;align-items:center;justify-content:space-between;padding:.25rem .75rem}
+    .section-header h2{margin:0;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+    .section-actions{display:flex;gap:.25rem}
+    .section-actions button{padding:.15rem .4rem;font-size:.75rem;background:transparent;border:1px solid var(--border);color:var(--muted)}
+    .tree{list-style:none;margin:0;padding:0}
+    .tree-item{display:flex;align-items:center;padding:.3rem .5rem;cursor:pointer;font-size:.85rem;gap:.35rem;user-select:none}
+    .tree-item:hover{background:#2a2d2e}
+    .tree-item.active{background:#094771}
+    .tree-item .icon{flex-shrink:0}
+    .tree-item .label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tree-item .del-btn{opacity:0;background:transparent;border:none;color:var(--muted);padding:0 .25rem;font-size:.85rem;cursor:pointer}
+    .tree-item:hover .del-btn{opacity:1}
+    .tree-item .ext-btn{opacity:0;background:transparent;border:none;color:var(--muted);padding:0 .25rem;font-size:.85rem;cursor:pointer}
+    .tree-item:hover .ext-btn{opacity:1}
+    .tree-children{padding-left:1rem}
+    #editor{min-height:0;border-bottom:1px solid var(--border)}
+    .output-panel{display:flex;flex-direction:column;min-height:0;background:#111}
+    .output-header{display:flex;align-items:center;justify-content:space-between;padding:.35rem .75rem;background:var(--panel);border-bottom:1px solid var(--border);font-size:.85rem}
+    #output{flex:1;overflow-y:auto;padding:.5rem .75rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;white-space:pre-wrap;word-break:break-word}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:100}
+    .modal-backdrop.open{display:flex}
+    .modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;min-width:320px;max-width:90vw}
+    .modal h3{margin:0 0 .75rem;font-size:1rem}
+    .modal p{margin:0 0 1rem;color:var(--muted);font-size:.9rem}
+    .modal-actions{display:flex;justify-content:flex-end;gap:.5rem}
+    .modal input{width:100%;margin-bottom:1rem;padding:.45rem .6rem;border-radius:4px;border:1px solid var(--border);background:#1e1e1e;color:var(--text);font-size:.9rem}
+    .toast{position:fixed;bottom:1rem;right:1rem;background:#2d333b;border:1px solid var(--border);padding:.6rem 1rem;border-radius:6px;display:none;z-index:200;font-size:.9rem}
+    .toast.show{display:block}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .announce{position:absolute;left:-9999px}
+    .shortcuts-popover{position:absolute;top:3.5rem;right:1rem;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.75rem 1rem;font-size:.85rem;display:none;z-index:50;min-width:220px}
+    .shortcuts-popover.open{display:block}
+    .shortcuts-popover dl{margin:0}
+    .shortcuts-popover dt{font-weight:600;margin-top:.35rem}
+    .shortcuts-popover dd{margin:.15rem 0 0;color:var(--muted)}
   </style>
 </head>
 <body>
@@ -231,50 +80,61 @@
       <div class="script-meta">
         <h1>k6 Studio</h1>
         <span id="current-script-name">—</span>
-        <span id="dirty-dot" class="dirty-dot" aria-hidden="true">•</span>
-        <span id="unsaved-label" class="unsaved-label">Unsaved</span>
+        <span id="unsaved-label" class="unsaved-label" aria-live="polite">Unsaved</span>
       </div>
       <button type="button" id="help-btn" class="ghost" aria-label="Keyboard shortcuts">?</button>
     </div>
     <div class="toolbar">
-      <button type="button" id="new-btn">New</button>
       <button type="button" id="save-btn">Save</button>
       <span class="sep" aria-hidden="true"></span>
       <button type="button" id="run-btn"><span aria-hidden="true">▶</span> Run</button>
       <button type="button" id="stop-btn" disabled><span aria-hidden="true">■</span> Stop</button>
       <span class="sep" aria-hidden="true"></span>
-      <button type="button" id="dashboard-btn" disabled aria-label="Dashboard (opens new tab)">Dashboard</button>
+      <button type="button" id="dashboard-btn" class="ghost" title="Dashboard is only active while a test is running">Dashboard ↗</button>
+      <span id="run-status" class="status-badge">Idle</span>
     </div>
     <div id="shortcuts-popover" class="shortcuts-popover" role="region" aria-label="Keyboard shortcuts">
       <dl>
-        <dt>Save</dt><dd>Cmd/Ctrl + S</dd>
-        <dt>Run</dt><dd>Cmd/Ctrl + Enter</dd>
+        <dt>Save</dt><dd>Cmd/Ctrl+S</dd>
+        <dt>Run</dt><dd>Cmd/Ctrl+Enter</dd>
         <dt>Close modal</dt><dd>Escape</dd>
+        <dt>Command palette</dt><dd>F1 (in editor)</dd>
       </dl>
     </div>
   </header>
 
   <div class="main">
-    <aside class="sidebar">
-      <h2>Scripts</h2>
-      <ul id="script-list" class="script-list"></ul>
+    <aside class="sidebar" aria-label="File explorer">
+      <div class="sidebar-section">
+        <div class="section-header">
+          <h2>Scripts</h2>
+          <div class="section-actions">
+            <button type="button" id="new-script-btn" title="New script">+ Script</button>
+            <button type="button" id="new-folder-btn" title="New folder">+ Folder</button>
+          </div>
+        </div>
+        <ul id="script-tree" class="tree" role="tree" aria-label="Scripts"></ul>
+      </div>
+      <div class="sidebar-section">
+        <div class="section-header"><h2>Reports</h2></div>
+        <ul id="report-tree" class="tree" role="tree" aria-label="Reports"></ul>
+      </div>
     </aside>
-    <div id="editor"></div>
+
+    <div id="editor" aria-label="Script editor. Press F1 for command palette."></div>
+
     <section class="output-panel" aria-label="Test output">
       <div class="output-header">
         <span>Output</span>
-        <div>
-          <span id="run-status" class="status-badge">idle</span>
-          <button type="button" id="clear-output-btn" class="ghost">Clear</button>
-        </div>
+        <button type="button" id="clear-output-btn" class="ghost">Clear</button>
       </div>
-      <div id="output" role="log" aria-live="polite"></div>
+      <div id="output" role="log" aria-live="off" aria-label="k6 test output"></div>
     </section>
   </div>
 
   <div id="delete-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-title">
     <div class="modal">
-      <h3 id="delete-title">Delete script?</h3>
+      <h3 id="delete-title">Delete?</h3>
       <p id="delete-message"></p>
       <div class="modal-actions">
         <button type="button" id="delete-cancel-btn" class="ghost">Cancel</button>
@@ -294,23 +154,41 @@
     </div>
   </div>
 
-  <div id="new-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="new-title">
+  <div id="new-script-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="new-script-title">
     <div class="modal">
-      <h3 id="new-title">New script</h3>
-      <label for="new-script-name" class="sr-only">Script name</label>
-      <input id="new-script-name" type="text" placeholder="my-test" autocomplete="off">
+      <h3 id="new-script-title">New script</h3>
+      <label for="new-script-input" class="sr-only">Script path (e.g. payments/refund.js)</label>
+      <input id="new-script-input" type="text" placeholder="payments/refund.js" autocomplete="off">
       <div class="modal-actions">
-        <button type="button" id="new-cancel-btn" class="ghost">Cancel</button>
-        <button type="button" id="new-confirm-btn">Create</button>
+        <button type="button" id="new-script-cancel-btn" class="ghost">Cancel</button>
+        <button type="button" id="new-script-confirm-btn">Create</button>
       </div>
     </div>
   </div>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="new-folder-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="new-folder-title">
+    <div class="modal">
+      <h3 id="new-folder-title">New folder</h3>
+      <label for="new-folder-input" class="sr-only">Folder path (e.g. payments)</label>
+      <input id="new-folder-input" type="text" placeholder="payments" autocomplete="off">
+      <div class="modal-actions">
+        <button type="button" id="new-folder-cancel-btn" class="ghost">Cancel</button>
+        <button type="button" id="new-folder-confirm-btn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" role="status" aria-live="polite">
+    <div id="toast" class="toast"></div>
+  </div>
+  <div id="announce" class="announce" aria-live="assertive" aria-atomic="true"></div>
 
   <script src="./monaco-editor/vs/loader.js"></script>
   <script>
-    const BOILERPLATE = `import http from 'k6/http';
+  'use strict';
+  (() => {
+  const CSRF = {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'};
+  const BOILERPLATE = `import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const TARGET_URL = __ENV.K6_TARGET_URL || 'http://host.docker.internal:8084/healthz';
@@ -325,15 +203,6 @@ export const options = {
   },
 };
 
-export function handleSummary(data) {
-  const ts = __ENV.K6_RUN_TIMESTAMP || (() => {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return \`\${now.getFullYear()}\${pad(now.getMonth() + 1)}\${pad(now.getDate())}T\${pad(now.getHours())}\${pad(now.getMinutes())}\${pad(now.getSeconds())}\`;
-  })();
-  return { [\`/tests/reports/summary-\${ts}.json\`]: JSON.stringify(data, null, 2) };
-}
-
 export default function () {
   const res = http.get(TARGET_URL);
   check(res, {
@@ -344,424 +213,353 @@ export default function () {
 }
 `;
 
-    let editor = null;
-    let currentScript = null;
-    let savedContent = '';
-    let isDirty = false;
-    let isRunning = false;
-    let eventSource = null;
-    let autoScroll = true;
-    let pendingSwitch = null;
-    let pendingDelete = null;
-    let focusTrapHandler = null;
+  let editor=null, currentScript=null, savedContent='', isDirty=false;
+  let runState='idle', eventSource=null, pollTimer=null;
+  let pendingSwitch=null, pendingDeletePath=null;
+  let focusTrapHandler=null, autoScroll=true;
+  let expandedDirs=JSON.parse(localStorage.getItem('k6-expanded')||'{}');
+  function saveExpanded(){localStorage.setItem('k6-expanded',JSON.stringify(expandedDirs));}
 
-    const els = {
-      scriptList: document.getElementById('script-list'),
-      currentName: document.getElementById('current-script-name'),
-      dirtyDot: document.getElementById('dirty-dot'),
-      unsavedLabel: document.getElementById('unsaved-label'),
-      output: document.getElementById('output'),
-      runStatus: document.getElementById('run-status'),
-      runBtn: document.getElementById('run-btn'),
-      stopBtn: document.getElementById('stop-btn'),
-      saveBtn: document.getElementById('save-btn'),
-      newBtn: document.getElementById('new-btn'),
-      dashboardBtn: document.getElementById('dashboard-btn'),
-      clearOutputBtn: document.getElementById('clear-output-btn'),
-      helpBtn: document.getElementById('help-btn'),
-      shortcuts: document.getElementById('shortcuts-popover'),
-      toast: document.getElementById('toast'),
-      deleteModal: document.getElementById('delete-modal'),
-      deleteMessage: document.getElementById('delete-message'),
-      deleteCancel: document.getElementById('delete-cancel-btn'),
-      deleteConfirm: document.getElementById('delete-confirm-btn'),
-      switchModal: document.getElementById('switch-modal'),
-      switchMessage: document.getElementById('switch-message'),
-      switchDiscard: document.getElementById('switch-discard-btn'),
-      switchSave: document.getElementById('switch-save-btn'),
-      newModal: document.getElementById('new-modal'),
-      newName: document.getElementById('new-script-name'),
-      newCancel: document.getElementById('new-cancel-btn'),
-      newConfirm: document.getElementById('new-confirm-btn'),
+  const $=(id)=>document.getElementById(id);
+  const el={
+    currentName:$('current-script-name'),unsavedLabel:$('unsaved-label'),
+    output:$('output'),runStatus:$('run-status'),runBtn:$('run-btn'),
+    stopBtn:$('stop-btn'),saveBtn:$('save-btn'),dashboardBtn:$('dashboard-btn'),
+    clearBtn:$('clear-output-btn'),helpBtn:$('help-btn'),shortcuts:$('shortcuts-popover'),
+    scriptTree:$('script-tree'),reportTree:$('report-tree'),toast:$('toast'),announce:$('announce'),
+    deleteModal:$('delete-modal'),deleteMessage:$('delete-message'),
+    deleteCancel:$('delete-cancel-btn'),deleteConfirm:$('delete-confirm-btn'),
+    switchModal:$('switch-modal'),switchMessage:$('switch-message'),
+    switchDiscard:$('switch-discard-btn'),switchSave:$('switch-save-btn'),
+    newScriptModal:$('new-script-modal'),newScriptInput:$('new-script-input'),
+    newScriptCancel:$('new-script-cancel-btn'),newScriptConfirm:$('new-script-confirm-btn'),
+    newFolderModal:$('new-folder-modal'),newFolderInput:$('new-folder-input'),
+    newFolderCancel:$('new-folder-cancel-btn'),newFolderConfirm:$('new-folder-confirm-btn'),
+  };
+
+  function showToast(msg){el.toast.textContent=msg;el.toast.classList.add('show');setTimeout(()=>el.toast.classList.remove('show'),3000);}
+  function announce(msg){el.announce.textContent='';requestAnimationFrame(()=>{el.announce.textContent=msg;});}
+  function setDirty(d){isDirty=d;el.unsavedLabel.classList.toggle('visible',d);}
+  function appendOutput(line){el.output.textContent+=(el.output.textContent?'\n':'')+line;if(autoScroll)el.output.scrollTop=el.output.scrollHeight;}
+  function clearOutput(){el.output.textContent='';}
+
+  function setRunState(state,opts={}){
+    runState=state;
+    const idle=state==='idle',running=state==='running';
+    el.runBtn.disabled=!idle;
+    el.runBtn.title=idle?'':'A test is already running';
+    el.stopBtn.disabled=!running;
+    el.dashboardBtn.title=running?'':'Dashboard is only active while a test is running';
+    const labels={idle:'Idle',running:'Running',stopping:'Stopping'};
+    el.runStatus.textContent=labels[state]||state;
+    el.runStatus.className='status-badge'+(running?' running':state==='stopping'?' stopping':opts.failed?' failed':'');
+    if(idle){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}if(opts.refreshReports)loadReportTree();}
+  }
+
+  function openModal(modal,initialFocus){
+    modal.classList.add('open');
+    const focusable=Array.from(modal.querySelectorAll('button,input,[tabindex]:not([tabindex="-1"])'));
+    (initialFocus||focusable[0])?.focus();
+    focusTrapHandler=(e)=>{
+      if(e.key!=='Tab'||!modal.classList.contains('open'))return;
+      const first=focusable[0],last=focusable[focusable.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+      else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
     };
+    document.addEventListener('keydown',focusTrapHandler);
+  }
+  function closeModal(modal,returnFocus){
+    modal.classList.remove('open');
+    if(focusTrapHandler){document.removeEventListener('keydown',focusTrapHandler);focusTrapHandler=null;}
+    returnFocus?.focus();
+  }
 
-    function showToast(message) {
-      els.toast.textContent = message;
-      els.toast.classList.add('show');
-      setTimeout(() => els.toast.classList.remove('show'), 3000);
-    }
-
-    function setDirty(dirty) {
-      isDirty = dirty;
-      els.dirtyDot.classList.toggle('visible', dirty);
-      els.unsavedLabel.classList.toggle('visible', dirty);
-    }
-
-    function setRunning(running) {
-      isRunning = running;
-      els.runBtn.disabled = running;
-      els.stopBtn.disabled = !running;
-      els.dashboardBtn.disabled = !running;
-      els.runStatus.textContent = running ? 'running…' : els.runStatus.textContent;
-      els.runStatus.classList.toggle('running', running);
-    }
-
-    function appendOutput(line) {
-      els.output.textContent += (els.output.textContent ? '\n' : '') + line;
-      if (autoScroll) els.output.scrollTop = els.output.scrollHeight;
-    }
-
-    function clearOutput() {
-      els.output.textContent = '';
-      els.runStatus.textContent = 'idle';
-      els.runStatus.classList.remove('running', 'failed');
-    }
-
-    function trapFocus(modal, initialFocus) {
-      const focusable = modal.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])');
-      const items = Array.from(focusable);
-      initialFocus.focus();
-      focusTrapHandler = (e) => {
-        if (e.key !== 'Tab' || !modal.classList.contains('open')) return;
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      };
-      document.addEventListener('keydown', focusTrapHandler);
-    }
-
-    function releaseFocusTrap() {
-      if (focusTrapHandler) {
-        document.removeEventListener('keydown', focusTrapHandler);
-        focusTrapHandler = null;
-      }
-    }
-
-    function openModal(modal, initialFocus) {
-      modal.classList.add('open');
-      trapFocus(modal, initialFocus);
-    }
-
-    function closeModal(modal) {
-      modal.classList.remove('open');
-      releaseFocusTrap();
-    }
-
-    async function fetchScripts() {
-      const res = await fetch('/api/scripts');
-      return res.json();
-    }
-
-    async function loadScript(name) {
-      const res = await fetch(`/api/scripts/${encodeURIComponent(name)}`);
-      if (!res.ok) throw new Error('Failed to load script');
-      const content = await res.text();
-      currentScript = name;
-      savedContent = content;
-      editor.setValue(content);
-      setDirty(false);
-      els.currentName.textContent = name;
-      renderScriptList(await fetchScripts());
-    }
-
-    async function saveScript() {
-      if (!currentScript) return;
-      const content = editor.getValue();
-      const res = await fetch(`/api/scripts/${encodeURIComponent(currentScript)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+  function renderNode(node,ul,depth){
+    if(node.type==='dir'){
+      const li=document.createElement('li');
+      li.setAttribute('role','treeitem');
+      // Key on full path for expand state, not just name
+      const key=node.path||node.name;
+      const isOpen=expandedDirs[key]!==false;
+      li.setAttribute('aria-expanded',String(isOpen));
+      const row=document.createElement('div');
+      row.className='tree-item';
+      row.style.paddingLeft=`${.5+depth}rem`;
+      row.setAttribute('tabindex','-1');
+      const icon=document.createElement('span');
+      icon.className='icon';icon.setAttribute('aria-hidden','true');icon.textContent=isOpen?'📂':'📁';
+      const label=document.createElement('span');
+      label.className='label';label.textContent=node.name+'/';
+      const delBtn=document.createElement('button');
+      delBtn.type='button';delBtn.className='del-btn';
+      delBtn.setAttribute('aria-label',`Delete ${node.name}/`);
+      delBtn.textContent='×';
+      delBtn.addEventListener('click',(e)=>{
+        e.stopPropagation();
+        pendingDeletePath=node.path||node.name;
+        el.deleteMessage.textContent=`Delete folder '${node.name}/' and all its contents?`;
+        openModal(el.deleteModal,el.deleteCancel);
       });
-      if (!res.ok) {
-        showToast('Save failed');
-        return false;
+      row.appendChild(icon);row.appendChild(label);row.appendChild(delBtn);
+      row.addEventListener('click',()=>{expandedDirs[key]=!isOpen;saveExpanded();loadScriptTree();});
+      li.appendChild(row);
+      if(isOpen){
+        const childUl=document.createElement('ul');
+        childUl.className='tree-children tree';childUl.setAttribute('role','group');
+        for(const child of(node.children||[]))renderNode(child,childUl,depth+1);
+        li.appendChild(childUl);
       }
-      savedContent = content;
-      setDirty(false);
-      showToast('Saved');
-      return true;
-    }
-
-    function renderScriptList(scripts) {
-      els.scriptList.innerHTML = '';
-      for (const name of scripts) {
-        const li = document.createElement('li');
-        if (name === currentScript) li.classList.add('active');
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.textContent = name.replace(/\.js$/, '');
-        btn.addEventListener('click', () => switchToScript(name));
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'delete-btn';
-        del.setAttribute('aria-label', `Delete ${name}`);
-        del.textContent = '×';
-        del.addEventListener('click', (e) => {
-          e.stopPropagation();
-          pendingDelete = name;
-          els.deleteMessage.textContent = `Delete '${name}'? This cannot be undone.`;
-          openModal(els.deleteModal, els.deleteCancel);
-        });
-        li.appendChild(btn);
-        li.appendChild(del);
-        els.scriptList.appendChild(li);
-      }
-    }
-
-    async function switchToScript(name) {
-      if (name === currentScript) return;
-      if (isDirty) {
-        pendingSwitch = name;
-        els.switchMessage.textContent = `Save changes to '${currentScript}' before switching?`;
-        openModal(els.switchModal, els.switchDiscard);
-        return;
-      }
-      await loadScript(name);
-    }
-
-    function connectEventSource(url) {
-      if (eventSource) eventSource.close();
-      eventSource = new EventSource(url);
-      eventSource.onmessage = (e) => appendOutput(e.data);
-      eventSource.addEventListener('done', (e) => {
-        const data = JSON.parse(e.data);
-        setRunning(false);
-        els.runStatus.textContent = data.exitCode === 0 ? 'completed' : `failed (${data.exitCode})`;
-        els.runStatus.classList.toggle('failed', data.exitCode !== 0);
-        eventSource.close();
-        eventSource = null;
+      ul.appendChild(li);
+    } else {
+      const li=document.createElement('li');li.setAttribute('role','treeitem');
+      const row=document.createElement('div');
+      row.className='tree-item'+(node.path===currentScript?' active':'');
+      row.style.paddingLeft=`${.5+depth}rem`;row.setAttribute('tabindex','-1');
+      const icon=document.createElement('span');icon.className='icon';icon.setAttribute('aria-hidden','true');icon.textContent='📄';
+      const label=document.createElement('span');label.className='label';label.textContent=node.name;
+      const delBtn=document.createElement('button');
+      delBtn.type='button';delBtn.className='del-btn';
+      delBtn.setAttribute('aria-label',`Delete ${node.name}`);delBtn.textContent='×';
+      delBtn.addEventListener('click',(e)=>{
+        e.stopPropagation();
+        pendingDeletePath=node.path;
+        el.deleteMessage.textContent=`Delete '${node.name}'? This cannot be undone.`;
+        openModal(el.deleteModal,el.deleteCancel);
       });
-      eventSource.addEventListener('error', (e) => {
-        if (e.data) {
-          const data = JSON.parse(e.data);
-          appendOutput(`[error] ${data.message}`);
-        }
-        setRunning(false);
-        eventSource?.close();
-        eventSource = null;
-      });
-      eventSource.onerror = () => {
-        if (!isRunning) {
-          eventSource?.close();
-          eventSource = null;
-        }
-      };
+      row.appendChild(icon);row.appendChild(label);row.appendChild(delBtn);
+      row.addEventListener('click',()=>switchToScript(node.path));
+      li.appendChild(row);ul.appendChild(li);
     }
+  }
 
-    async function runTest() {
-      if (!currentScript || isRunning) return;
-      if (isDirty) {
-        const saved = await saveScript();
-        if (!saved) return;
+  async function loadScriptTree(){
+    const res=await fetch('/api/tree');
+    const tree=await res.json();
+    el.scriptTree.innerHTML='';
+    for(const child of(tree.children||[]))renderNode(child,el.scriptTree,0);
+  }
+
+  function renderReportNode(node,ul,depth){
+    if(node.type==='dir'){
+      const li=document.createElement('li');li.setAttribute('role','treeitem');
+      const key='report-'+(node.path||node.name);
+      const isOpen=expandedDirs[key]!==false;
+      const row=document.createElement('div');
+      row.className='tree-item';row.style.paddingLeft=`${.5+depth}rem`;row.setAttribute('tabindex','-1');
+      const icon=document.createElement('span');icon.className='icon';icon.setAttribute('aria-hidden','true');icon.textContent=isOpen?'📂':'📁';
+      const label=document.createElement('span');label.className='label';label.textContent=node.name+'/';
+      row.appendChild(icon);row.appendChild(label);
+      row.addEventListener('click',()=>{expandedDirs[key]=!isOpen;saveExpanded();loadReportTree();});
+      li.appendChild(row);
+      if(isOpen){
+        const childUl=document.createElement('ul');childUl.className='tree-children tree';childUl.setAttribute('role','group');
+        for(const child of(node.children||[]))renderReportNode(child,childUl,depth+1);
+        li.appendChild(childUl);
       }
-      clearOutput();
-      setRunning(true);
-      els.runStatus.textContent = 'starting…';
-
-      const res = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: currentScript }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        appendOutput(`[error] ${err.message || err.error || res.statusText}`);
-        setRunning(false);
-        els.runStatus.textContent = 'failed';
-        els.runStatus.classList.add('failed');
-        return;
+      ul.appendChild(li);
+    } else {
+      const li=document.createElement('li');li.setAttribute('role','treeitem');
+      const row=document.createElement('div');
+      row.className='tree-item';row.style.paddingLeft=`${.5+depth}rem`;row.setAttribute('tabindex','-1');
+      const icon=document.createElement('span');icon.className='icon';icon.setAttribute('aria-hidden','true');icon.textContent='📄';
+      if(!node.htmlUrl){
+        const label=document.createElement('span');label.className='label';label.style.color='var(--muted)';label.textContent='(no report)';
+        row.appendChild(icon);row.appendChild(label);
+      } else {
+        const label=document.createElement('span');label.className='label';label.title=node.name;label.textContent=node.label||node.name;
+        const extBtn=document.createElement('button');
+        extBtn.type='button';extBtn.className='ext-btn';
+        extBtn.setAttribute('aria-label',`Open ${node.name} in new tab`);
+        extBtn.textContent='↗';
+        extBtn.addEventListener('click',(e)=>{e.stopPropagation();window.open(node.htmlUrl,'_blank','noopener');});
+        row.appendChild(icon);row.appendChild(label);row.appendChild(extBtn);
+        row.addEventListener('click',()=>window.open(node.htmlUrl,'_blank','noopener'));
       }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-          if (part.startsWith(':')) continue;
-          if (part.startsWith('event: done')) {
-            const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
-            if (dataLine) {
-              const data = JSON.parse(dataLine.slice(6));
-              setRunning(false);
-              els.runStatus.textContent = data.exitCode === 0 ? 'completed' : `failed (${data.exitCode})`;
-              els.runStatus.classList.toggle('failed', data.exitCode !== 0);
-            }
-          } else if (part.startsWith('event: error')) {
-            const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
-            if (dataLine) {
-              const data = JSON.parse(dataLine.slice(6));
-              appendOutput(`[error] ${data.message}`);
-            }
-            setRunning(false);
-          } else if (part.startsWith('data: ')) {
-            appendOutput(part.slice(6));
-          }
-        }
-      }
+      li.appendChild(row);ul.appendChild(li);
     }
+  }
 
-    async function stopTest() {
-      await fetch('/api/stop', { method: 'POST' });
-      setRunning(false);
-      els.runStatus.textContent = 'stopped';
+  async function loadReportTree(){
+    const res=await fetch('/api/reports');
+    const tree=await res.json();
+    el.reportTree.innerHTML='';
+    for(const child of(tree.children||[]))renderReportNode(child,el.reportTree,0);
+  }
+
+  async function loadScript(scriptPath){
+    const res=await fetch(`/api/scripts/${scriptPath}`);
+    if(!res.ok){showToast('Failed to load script');return;}
+    const content=await res.text();
+    currentScript=scriptPath;savedContent=content;
+    editor.setValue(content);setDirty(false);
+    el.currentName.textContent=scriptPath;
+    await loadScriptTree();
+  }
+
+  async function saveScript(){
+    if(!currentScript)return false;
+    const content=editor.getValue();
+    const res=await fetch(`/api/scripts/${currentScript}`,{method:'PUT',headers:CSRF,body:JSON.stringify({content})});
+    if(!res.ok){showToast('Save failed');return false;}
+    savedContent=content;setDirty(false);showToast('Saved');return true;
+  }
+
+  async function switchToScript(scriptPath){
+    if(scriptPath===currentScript)return;
+    if(isDirty){
+      pendingSwitch=scriptPath;
+      el.switchMessage.textContent=`Save changes to '${currentScript}' before switching?`;
+      openModal(el.switchModal,el.switchSave);return;
     }
+    await loadScript(scriptPath);
+  }
 
-    async function createScript() {
-      const raw = els.newName.value.trim();
-      if (!raw) return;
-      const name = raw.endsWith('.js') ? raw : `${raw}.js`;
-      if (!/^[a-zA-Z0-9_-]+\.js$/.test(name)) {
-        showToast('Invalid script name');
-        return;
-      }
-      const res = await fetch(`/api/scripts/${encodeURIComponent(name)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: BOILERPLATE }),
-      });
-      if (!res.ok) {
-        showToast('Create failed');
-        return;
-      }
-      closeModal(els.newModal);
-      const scripts = await fetchScripts();
-      renderScriptList(scripts);
-      await loadScript(name);
+  async function deleteItem(){
+    if(!pendingDeletePath)return;
+    const trigger=document.activeElement;
+    const res=await fetch(`/api/scripts/${pendingDeletePath}`,{method:'DELETE',headers:CSRF});
+    closeModal(el.deleteModal,trigger);
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      showToast(err.error==='script_running'?'Cannot delete — test is running':(err.error||'Delete failed'));
+      pendingDeletePath=null;return;
     }
-
-    async function deleteScript() {
-      if (!pendingDelete) return;
-      const res = await fetch(`/api/scripts/${encodeURIComponent(pendingDelete)}`, { method: 'DELETE' });
-      closeModal(els.deleteModal);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.error || 'Delete failed');
-        pendingDelete = null;
-        return;
-      }
-      const wasCurrent = pendingDelete === currentScript;
-      pendingDelete = null;
-      const scripts = await fetchScripts();
-      renderScriptList(scripts);
-      if (wasCurrent) {
-        if (scripts.length) await loadScript(scripts[0]);
-        else {
-          currentScript = null;
-          editor.setValue('');
-          els.currentName.textContent = '—';
-        }
-      }
+    const wasCurrent=currentScript&&currentScript.startsWith(pendingDeletePath+'/');
+    if(!wasCurrent&&currentScript===pendingDeletePath)wasCurrent||0,wasCurrent===undefined&&(currentScript===pendingDeletePath);
+    // reset editor if deleted item was/contained current script
+    if(currentScript&&(currentScript===pendingDeletePath||currentScript.startsWith(pendingDeletePath+'/'))){
+      currentScript=null;savedContent='';editor.setValue('');el.currentName.textContent='—';setDirty(false);
     }
+    pendingDeletePath=null;
+    await loadScriptTree();
+  }
 
-    async function initFromStatus() {
-      const statusRes = await fetch('/api/status');
-      const status = await statusRes.json();
-      if (status.status === 'running') {
-        const outputRes = await fetch('/api/output');
-        const output = await outputRes.json();
-        for (const line of output.lines) appendOutput(line);
-        setRunning(true);
-        connectEventSource('/api/stream');
-      }
+  async function createScript(){
+    const raw=el.newScriptInput.value.trim();if(!raw)return;
+    const name=raw.endsWith('.js')?raw:`${raw}.js`;
+    const trigger=document.activeElement;
+    const res=await fetch(`/api/scripts/${name}`,{method:'PUT',headers:CSRF,body:JSON.stringify({content:BOILERPLATE})});
+    if(!res.ok){const err=await res.json().catch(()=>({}));showToast(err.error==='too_deep'?'Path too deep (max 5 levels)':'Create failed');return;}
+    closeModal(el.newScriptModal,trigger);
+    await loadScript(name);
+  }
+
+  async function createFolder(){
+    const raw=el.newFolderInput.value.trim();if(!raw)return;
+    const trigger=document.activeElement;
+    const res=await fetch(`/api/dirs/${raw}`,{method:'PUT',headers:CSRF});
+    closeModal(el.newFolderModal,trigger);
+    if(!res.ok){const err=await res.json().catch(()=>({}));showToast(err.error==='too_deep'?'Path too deep (max 5 levels)':'Create folder failed');return;}
+    await loadScriptTree();
+  }
+
+  function connectSSE(){
+    if(eventSource){eventSource.close();eventSource=null;}
+    eventSource=new EventSource('/api/stream');
+    eventSource.onmessage=(e)=>appendOutput(e.data);
+    eventSource.addEventListener('done',(e)=>{
+      const data=JSON.parse(e.data);const failed=data.exitCode!==0;
+      if(failed){el.runStatus.textContent=`Failed (${data.exitCode})`;el.runStatus.className='status-badge failed';}
+      setRunState('idle',{failed,refreshReports:true});
+      announce(failed?`Test failed with exit code ${data.exitCode}`:'Test completed');
+      eventSource?.close();eventSource=null;
+    });
+    eventSource.addEventListener('error',(e)=>{
+      if(e.data){const d=JSON.parse(e.data);appendOutput(`[error] ${d.message}`);}
+      setRunState('idle',{failed:true});eventSource?.close();eventSource=null;
+    });
+    eventSource.onerror=()=>{if(runState==='idle'){eventSource?.close();eventSource=null;}};
+  }
+
+  async function runTest(){
+    if(!currentScript||runState!=='idle')return;
+    if(isDirty){const saved=await saveScript();if(!saved)return;}
+    clearOutput();setRunState('running');announce('Test started');
+    const res=await fetch('/api/run',{method:'POST',headers:CSRF,body:JSON.stringify({name:currentScript})});
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      if(res.status===409)showToast('A test is already running');
+      else appendOutput(`[error] ${err.message||err.error||res.statusText}`);
+      setRunState('idle',{failed:true});return;
     }
+    connectSSE();
+    // Poll as fallback for SSE drops/page refresh — SSE done event is primary
+    pollTimer=setInterval(async()=>{
+      const sr=await fetch('/api/status').then(r=>r.json()).catch(()=>({}));
+      if(sr.status==='idle')setRunState('idle',{refreshReports:true});
+    },2000);
+  }
 
-    require.config({ paths: { vs: './monaco-editor/vs' } });
-    require(['vs/editor/editor.main'], async () => {
-      editor = monaco.editor.create(document.getElementById('editor'), {
-        value: '',
-        language: 'javascript',
-        theme: 'vs-dark',
-        automaticLayout: true,
-        minimap: { enabled: false },
-        fontSize: 13,
-      });
+  async function stopTest(){
+    setRunState('stopping');announce('Stopping test…');
+    await fetch('/api/stop',{method:'POST',headers:CSRF});
+  }
 
-      editor.onDidChangeModelContent(() => {
-        setDirty(editor.getValue() !== savedContent);
-      });
+  async function initFromStatus(){
+    const sr=await fetch('/api/status').then(r=>r.json()).catch(()=>({}));
+    if(sr.status!=='idle'){
+      // Backfill output via /api/output (no SSE replay in runner — single source of truth)
+      const output=await fetch('/api/output').then(r=>r.json()).catch(()=>({lines:[]}));
+      for(const line of output.lines)appendOutput(line);
+      setRunState('running');connectSSE();
+      pollTimer=setInterval(async()=>{
+        const s2=await fetch('/api/status').then(r=>r.json()).catch(()=>({}));
+        if(s2.status==='idle')setRunState('idle',{refreshReports:true});
+      },2000);
+    }
+  }
 
-      const scripts = await fetchScripts();
-      renderScriptList(scripts);
-      if (scripts.length) await loadScript(scripts[0]);
-      await initFromStatus();
-    });
+  document.addEventListener('keydown',(e)=>{
+    const mod=e.metaKey||e.ctrlKey;
+    if(mod&&e.key==='s'){e.preventDefault();saveScript();}
+    if(mod&&e.key==='Enter'&&runState==='idle'){e.preventDefault();runTest();}
+    if(e.key==='Escape'){
+      [el.deleteModal,el.switchModal,el.newScriptModal,el.newFolderModal]
+        .forEach(m=>{if(m.classList.contains('open'))closeModal(m);});
+      el.shortcuts.classList.remove('open');
+    }
+  });
 
-    els.saveBtn.addEventListener('click', () => saveScript());
-    els.newBtn.addEventListener('click', () => {
-      els.newName.value = '';
-      openModal(els.newModal, els.newName);
-    });
-    els.runBtn.addEventListener('click', () => runTest());
-    els.stopBtn.addEventListener('click', () => stopTest());
-    els.dashboardBtn.addEventListener('click', () => {
-      window.open('http://localhost:5665', '_blank', 'noopener');
-      showToast('Dashboard opened in a new tab');
-    });
-    els.clearOutputBtn.addEventListener('click', clearOutput);
-    els.helpBtn.addEventListener('click', () => els.shortcuts.classList.toggle('open'));
+  el.saveBtn.addEventListener('click',()=>saveScript());
+  el.runBtn.addEventListener('click',()=>runTest());
+  el.stopBtn.addEventListener('click',()=>stopTest());
+  el.dashboardBtn.addEventListener('click',()=>window.open('http://localhost:5665','_blank','noopener'));
+  el.clearBtn.addEventListener('click',clearOutput);
+  el.helpBtn.addEventListener('click',()=>el.shortcuts.classList.toggle('open'));
+  el.deleteCancel.addEventListener('click',()=>{pendingDeletePath=null;closeModal(el.deleteModal);});
+  el.deleteConfirm.addEventListener('click',deleteItem);
+  el.switchDiscard.addEventListener('click',async()=>{
+    const target=pendingSwitch;pendingSwitch=null;closeModal(el.switchModal);setDirty(false);
+    if(target)await loadScript(target);
+  });
+  el.switchSave.addEventListener('click',async()=>{
+    const target=pendingSwitch;const saved=await saveScript();if(!saved)return;
+    pendingSwitch=null;closeModal(el.switchModal);if(target)await loadScript(target);
+  });
+  $('new-script-btn').addEventListener('click',()=>{el.newScriptInput.value='';openModal(el.newScriptModal,el.newScriptInput);});
+  el.newScriptCancel.addEventListener('click',()=>closeModal(el.newScriptModal));
+  el.newScriptConfirm.addEventListener('click',createScript);
+  el.newScriptInput.addEventListener('keydown',(e)=>{if(e.key==='Enter')createScript();});
+  $('new-folder-btn').addEventListener('click',()=>{el.newFolderInput.value='';openModal(el.newFolderModal,el.newFolderInput);});
+  el.newFolderCancel.addEventListener('click',()=>closeModal(el.newFolderModal));
+  el.newFolderConfirm.addEventListener('click',createFolder);
+  el.newFolderInput.addEventListener('keydown',(e)=>{if(e.key==='Enter')createFolder();});
+  el.output.addEventListener('scroll',()=>{
+    autoScroll=el.output.scrollHeight-el.output.scrollTop-el.output.clientHeight<24;
+  });
 
-    els.deleteCancel.addEventListener('click', () => {
-      pendingDelete = null;
-      closeModal(els.deleteModal);
+  require.config({paths:{vs:'./monaco-editor/vs'}});
+  require(['vs/editor/editor.main'],async()=>{
+    editor=monaco.editor.create(document.getElementById('editor'),{
+      value:'',language:'javascript',theme:'vs-dark',
+      automaticLayout:true,minimap:{enabled:false},fontSize:13,
     });
-    els.deleteConfirm.addEventListener('click', deleteScript);
-
-    els.switchDiscard.addEventListener('click', async () => {
-      const target = pendingSwitch;
-      pendingSwitch = null;
-      closeModal(els.switchModal);
-      if (target) await loadScript(target);
-    });
-    els.switchSave.addEventListener('click', async () => {
-      const target = pendingSwitch;
-      const saved = await saveScript();
-      if (!saved) return;
-      pendingSwitch = null;
-      closeModal(els.switchModal);
-      if (target) await loadScript(target);
-    });
-
-    els.newCancel.addEventListener('click', () => closeModal(els.newModal));
-    els.newConfirm.addEventListener('click', createScript);
-    els.newName.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') createScript();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key === 's') {
-        e.preventDefault();
-        saveScript();
-      }
-      if (mod && e.key === 'Enter' && !isRunning) {
-        e.preventDefault();
-        runTest();
-      }
-      if (e.key === 'Escape') {
-        [els.deleteModal, els.switchModal, els.newModal].forEach((m) => {
-          if (m.classList.contains('open')) closeModal(m);
-        });
-        els.shortcuts.classList.remove('open');
-      }
-    });
-
-    els.output.addEventListener('scroll', () => {
-      const atBottom = els.output.scrollHeight - els.output.scrollTop - els.output.clientHeight < 24;
-      autoScroll = atBottom;
-    });
+    editor.onDidChangeModelContent(()=>setDirty(editor.getValue()!==savedContent));
+    await loadScriptTree();await loadReportTree();await initFromStatus();
+    const first=el.scriptTree.querySelector('.tree-item');
+    if(!currentScript&&first)first.click();
+  });
+  })();
   </script>
 </body>
 </html>

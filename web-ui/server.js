@@ -1,430 +1,316 @@
 'use strict';
 
 const express = require('express');
-const Docker = require('dockerode');
-const fs = require('fs');
-const fsp = require('fs/promises');
-const path = require('path');
-const { PassThrough } = require('stream');
+const { createServer } = require('node:http');
+const fsp = require('node:fs/promises');
+const path = require('node:path');
+const http = require('node:http');
 
 const PORT = Number(process.env.PORT) || 3000;
-const TESTS_DIR = '/tests';
-const HOST_TESTS_PATH = process.env.HOST_TESTS_PATH;
-const K6_IMAGE = process.env.K6_IMAGE;
-const K6_TARGET_URL = process.env.K6_TARGET_URL || 'http://host.docker.internal:8084/healthz';
-const MAX_LINES = 10000;
-const SCRIPT_NAME_RE = /^[a-zA-Z0-9_-]+\.js$/;
+const TESTS_DIR = process.env.TESTS_DIR || '/tests';
+const REPORTS_DIR = path.join(TESTS_DIR, 'reports');
+const K6_RUNNER_URL = process.env.K6_RUNNER_URL || 'http://k6:8080';
 
-const docker = new Docker({ socketPath: '/var/run/docker.sock' });
-const app = express();
+const SEGMENT_RE = /^[a-zA-Z0-9_-]+$/;
+const SCRIPT_FILE_RE = /^[a-zA-Z0-9_-]+\.js$/;
+const MAX_DEPTH = 5;
 
-let isRunning = false;
-let currentScript = null;
-let containerId = null;
-let exitCode = null;
-let activeContainer = null;
-let outputLines = [];
-const sseClients = new Set();
-let pingTimer = null;
+function validatePath(rawPath, { isDir = false } = {}) {
+  const decoded = decodeURIComponent(rawPath || '');
+  const segments = decoded.split('/').filter(Boolean);
 
-function buildTimestamp() {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
-    `T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
+  if (segments.length > MAX_DEPTH) return { valid: false, error: 'too_deep' };
 
-function parseExtraHosts(value) {
-  if (!value) return [];
-  return value.split(',').map((entry) => entry.trim()).filter(Boolean);
-}
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (!SEGMENT_RE.test(segments[i])) return { valid: false, error: 'invalid_path' };
+  }
 
-function resolveScriptPath(name) {
-  if (!SCRIPT_NAME_RE.test(name)) return null;
-  const fullPath = path.resolve(TESTS_DIR, name);
+  const last = segments[segments.length - 1];
+  if (!last) return { valid: false, error: 'invalid_path' };
+
+  if (isDir) {
+    if (!SEGMENT_RE.test(last)) return { valid: false, error: 'invalid_path' };
+  } else {
+    if (!SCRIPT_FILE_RE.test(last)) return { valid: false, error: 'invalid_path' };
+  }
+
+  const resolved = path.resolve(TESTS_DIR, ...segments);
   const base = path.resolve(TESTS_DIR);
-  if (fullPath !== base && !fullPath.startsWith(base + path.sep)) return null;
-  return fullPath;
-}
-
-function appendLine(line) {
-  outputLines.push(line);
-  if (outputLines.length > MAX_LINES) outputLines.shift();
-  for (const res of sseClients) {
-    if (!res.writableEnded) res.write(`data: ${line}\n\n`);
+  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
+    return { valid: false, error: 'invalid_path' };
   }
+  return { valid: true, resolved, relPath: segments.join('/') };
 }
 
-function startPing() {
-  if (pingTimer) return;
-  pingTimer = setInterval(() => {
-    for (const res of sseClients) {
-      if (!res.writableEnded) res.write(': ping\n\n');
-    }
-  }, 15000);
-}
-
-function stopPing() {
-  if (pingTimer) {
-    clearInterval(pingTimer);
-    pingTimer = null;
-  }
-}
-
-function attachSseClient(res) {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  for (const line of outputLines) {
-    res.write(`data: ${line}\n\n`);
-  }
-
-  sseClients.add(res);
-  startPing();
-
-  res.on('close', () => {
-    sseClients.delete(res);
-    if (sseClients.size === 0) stopPing();
-  });
-}
-
-function broadcastDone(code) {
-  const payload = JSON.stringify({ exitCode: code });
-  for (const res of sseClients) {
-    if (!res.writableEnded) {
-      res.write(`event: done\ndata: ${payload}\n\n`);
-      res.end();
+async function buildTree(dir, name, excludeDir, depth = 0) {
+  const node = { type: 'dir', name, children: [] };
+  if (depth > MAX_DEPTH) return node;
+  let entries;
+  try { entries = await fsp.readdir(dir, { withFileTypes: true }); }
+  catch { return node; }
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    if (entry.name === excludeDir) continue;
+    if (entry.isDirectory()) {
+      node.children.push(await buildTree(path.join(dir, entry.name), entry.name, null, depth + 1));
+    } else if (entry.isFile() && entry.name.endsWith('.js')) {
+      const relPath = path.relative(TESTS_DIR, path.join(dir, entry.name));
+      node.children.push({ type: 'file', name: entry.name, path: relPath });
     }
   }
-  sseClients.clear();
-  stopPing();
+  return node;
 }
 
-function broadcastError(message) {
-  const payload = JSON.stringify({ message });
-  for (const res of sseClients) {
-    if (!res.writableEnded) {
-      res.write(`event: error\ndata: ${payload}\n\n`);
-      res.end();
-    }
+function parseTimestampLabel(filename) {
+  const m = filename.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/);
+  if (!m) return filename;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[Number(m[2]) - 1]} ${Number(m[3])}, ${m[4]}:${m[5]}`;
+}
+
+async function buildReportsTree(dir, name, depth = 0) {
+  const node = { type: 'dir', name, children: [] };
+  if (depth > MAX_DEPTH) return node;
+  let entries;
+  try { entries = await fsp.readdir(dir, { withFileTypes: true }); }
+  catch { return node; }
+  // jsonUrl points to k6 NDJSON metrics stream (may 404 if run stopped before flush — spec-designed)
+  const htmlFiles = entries
+    .filter((e) => e.isFile() && e.name.endsWith('.html'))
+    .sort((a, b) => b.name.localeCompare(a.name));
+  const subDirs = entries
+    .filter((e) => e.isDirectory())
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const entry of subDirs) {
+    node.children.push(await buildReportsTree(path.join(dir, entry.name), entry.name, depth + 1));
   }
-  sseClients.clear();
-  stopPing();
-}
-
-async function listScripts() {
-  const entries = await fsp.readdir(TESTS_DIR, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
-    .map((entry) => entry.name)
-    .sort();
-}
-
-async function cleanupOrphans() {
-  const containers = await docker.listContainers({
-    all: true,
-    filters: { label: ['managed-by=k6-web-ui'] },
-  });
-
-  for (const info of containers) {
-    const container = docker.getContainer(info.Id);
-    await container.remove({ force: true });
-    console.warn(`Removed orphan k6 container ${info.Id} (previous test terminated due to server restart)`);
+  for (const entry of htmlFiles) {
+    const base = entry.name.replace(/\.html$/, '');
+    const relPath = path.relative(REPORTS_DIR, path.join(dir, entry.name));
+    node.children.push({
+      type: 'file',
+      name: entry.name,
+      path: relPath,
+      htmlUrl: `/reports/${relPath}`,
+      jsonUrl: `/reports/${base}.json`,
+      metaUrl: `/reports/${base}.meta.json`,
+      label: parseTimestampLabel(base),
+    });
   }
+  return node;
 }
 
-async function streamContainerLogs(container) {
-  const logStream = await container.logs({
-    follow: true,
-    stdout: true,
-    stderr: true,
-    timestamps: false,
-  });
-
-  const stdout = new PassThrough();
-  const stderr = new PassThrough();
-  container.modem.demuxStream(logStream, stdout, stderr);
-
-  const handleChunk = (chunk) => {
-    const text = chunk.toString();
-    for (const line of text.split(/\r?\n/)) {
-      if (line) appendLine(line);
-    }
+function proxyTo(targetPath, req, res) {
+  const url = new URL(K6_RUNNER_URL);
+  const opts = {
+    hostname: url.hostname,
+    port: url.port || 8080,
+    path: targetPath,
+    method: req.method,
+    headers: { 'content-type': 'application/json' },
   };
 
-  stdout.on('data', handleChunk);
-  stderr.on('data', handleChunk);
-
-  return new Promise((resolve, reject) => {
-    logStream.on('end', resolve);
-    logStream.on('error', reject);
-  });
-}
-
-async function startRun(name, res) {
-  const scriptPath = resolveScriptPath(name);
-  if (!scriptPath) {
-    isRunning = false;
-    return res.status(400).json({ error: 'invalid_name', reason: 'invalid_name' });
-  }
-
-  try {
-    await fsp.access(scriptPath, fs.constants.F_OK);
-  } catch {
-    isRunning = false;
-    return res.status(404).json({ error: 'not_found' });
-  }
-
-  outputLines = [];
-  exitCode = null;
-  currentScript = name;
-
-  const runTimestamp = buildTimestamp();
-
-  let container;
-  try {
-    container = await docker.createContainer({
-      Image: K6_IMAGE,
-      Cmd: ['run', `/tests/${name}`],
-      Labels: { 'managed-by': 'k6-web-ui' },
-      Env: [
-        'K6_WEB_DASHBOARD=true',
-        `K6_WEB_DASHBOARD_EXPORT=/tests/reports/summary-${runTimestamp}.html`,
-        `K6_RUN_TIMESTAMP=${runTimestamp}`,
-        `K6_TARGET_URL=${K6_TARGET_URL}`,
-      ],
-      HostConfig: {
-        Binds: [`${HOST_TESTS_PATH}:/tests`],
-        PortBindings: {
-          '5665/tcp': [{ HostIp: '127.0.0.1', HostPort: '5665' }],
-        },
-        ExtraHosts: parseExtraHosts(process.env.K6_EXTRA_HOSTS),
-        Resources: {
-          NanoCpus: 2e9,
-          Memory: 512 * 1024 * 1024,
-        },
-      },
-    });
-  } catch (err) {
-    isRunning = false;
-    currentScript = null;
-    const message = String(err.message || err);
-    if (/port is already allocated|address already in use/i.test(message)) {
-      return res.status(503).json({ error: 'port_conflict', reason: 'port_conflict' });
+  const proxyReq = http.request(opts, (proxyRes) => {
+    res.status(proxyRes.statusCode);
+    if (proxyRes.headers['content-type']) {
+      res.setHeader('Content-Type', proxyRes.headers['content-type']);
     }
-    if (/no such image|pull access denied|manifest unknown/i.test(message)) {
-      return res.status(503).json({ error: 'image_not_found', message: 'Image not found — run `make pull`' });
+    if (proxyRes.headers['x-accel-buffering']) {
+      res.setHeader('X-Accel-Buffering', proxyRes.headers['x-accel-buffering']);
     }
-    return res.status(503).json({ error: 'docker_unavailable', reason: 'docker_unavailable', message });
-  }
-
-  activeContainer = container;
-  containerId = container.id;
-
-  try {
-    await container.start();
-  } catch (err) {
-    isRunning = false;
-    activeContainer = null;
-    containerId = null;
-    currentScript = null;
-    try { await container.remove({ force: true }); } catch { /* ignore */ }
-    const message = String(err.message || err);
-    if (/port is already allocated|address already in use/i.test(message)) {
-      return res.status(503).json({ error: 'port_conflict', reason: 'port_conflict' });
-    }
-    return res.status(503).json({ error: 'docker_unavailable', reason: 'docker_unavailable', message });
-  }
-
-  attachSseClient(res);
-
-  const logsPromise = streamContainerLogs(container).catch((err) => {
-    appendLine(`[error] log stream failed: ${err.message}`);
+    res.setHeader('Cache-Control', 'no-cache');
+    if (targetPath === '/stream') res.flushHeaders();
+    proxyRes.pipe(res);
   });
 
-  try {
-    const result = await container.wait();
-    await logsPromise.catch(() => {});
-    exitCode = result.StatusCode;
-    broadcastDone(exitCode);
-  } catch (err) {
-    appendLine(`[error] container wait failed: ${err.message}`);
-    broadcastError(err.message);
-  } finally {
-    try { await container.remove({ force: true }); } catch { /* ignore */ }
-    isRunning = false;
-    activeContainer = null;
-    containerId = null;
-    currentScript = null;
+  proxyReq.on('error', () => {
+    if (!res.headersSent) {
+      res.status(503).json({
+        error: 'runner_unavailable',
+        message: 'k6 runner unavailable — is the k6 service healthy?',
+      });
+    }
+  });
+
+  // Propagate browser disconnect upstream to avoid phantom SSE connections
+  req.on('close', () => proxyReq.destroy());
+
+  if (req.body && Object.keys(req.body).length) {
+    proxyReq.write(JSON.stringify(req.body));
   }
+  proxyReq.end();
 }
 
-async function stopActiveContainer() {
-  if (!activeContainer) return false;
+const app = express();
 
-  const container = activeContainer;
-  try { await container.stop({ t: 5 }); } catch { /* already stopped */ }
-  try { await container.remove({ force: true }); } catch { /* ignore */ }
+// CSP on all responses
+app.use((_req, res, next) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'");
+  next();
+});
 
-  isRunning = false;
-  activeContainer = null;
-  containerId = null;
-  currentScript = null;
-  broadcastDone(exitCode ?? 137);
-  return true;
-}
-
-async function shutdown() {
-  if (activeContainer) {
-    await stopActiveContainer();
-  }
-  process.exit(0);
-}
-
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '256kb' }));
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true });
-});
-
-app.get('/api/scripts', async (_req, res) => {
-  try {
-    const scripts = await listScripts();
-    res.json(scripts);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+// CSRF guard for mutation methods
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    if (req.headers['x-requested-with'] !== 'XMLHttpRequest') {
+      return res.status(403).json({ error: 'forbidden' });
+    }
   }
+  next();
 });
 
-app.get('/api/scripts/:name', async (req, res) => {
-  const scriptPath = resolveScriptPath(req.params.name);
-  if (!scriptPath) return res.status(400).json({ error: 'invalid_name', reason: 'invalid_name' });
+// 413 body-too-large mapping
+app.use((err, _req, res, next) => {
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'payload_too_large' });
+  next(err);
+});
 
+// Static reports with extra security headers
+// allow-scripts required so the k6 self-contained HTML dashboard can render its charts
+app.use('/reports', (_req, res, next) => {
+  res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+}, express.static(REPORTS_DIR));
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/api/tree', async (_req, res) => {
+  const tree = await buildTree(TESTS_DIR, 'tests', 'reports');
+  res.json(tree);
+});
+
+app.get('/api/scripts/*', async (req, res) => {
+  const v = validatePath(req.params[0]);
+  if (!v.valid) return res.status(400).json({ error: v.error });
   try {
-    const content = await fsp.readFile(scriptPath, 'utf8');
+    const content = await fsp.readFile(v.resolved, 'utf8');
     res.type('text/plain').send(content);
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'not_found' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'read_failed' });
   }
 });
 
-app.put('/api/scripts/:name', async (req, res) => {
-  const scriptPath = resolveScriptPath(req.params.name);
-  if (!scriptPath) return res.status(400).json({ error: 'invalid_name', reason: 'invalid_name' });
-
-  const content = req.body?.content;
-  if (typeof content !== 'string') {
-    return res.status(400).json({ error: 'invalid_body', message: 'content must be a string' });
+app.put('/api/scripts/*', async (req, res) => {
+  const v = validatePath(req.params[0]);
+  if (!v.valid) {
+    if (v.error === 'too_deep') return res.status(400).json({ error: 'too_deep', message: 'Maximum directory depth is 5 levels' });
+    return res.status(400).json({ error: v.error });
   }
-
-  try {
-    await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
-    await fsp.writeFile(scriptPath, content, 'utf8');
-    res.json({ saved: true, name: req.params.name });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { content } = req.body || {};
+  if (typeof content !== 'string') return res.status(400).json({ error: 'invalid_body' });
+  await fsp.mkdir(path.dirname(v.resolved), { recursive: true });
+  await fsp.writeFile(v.resolved, content, 'utf8');
+  res.json({ saved: true });
 });
 
-app.delete('/api/scripts/:name', async (req, res) => {
-  const scriptPath = resolveScriptPath(req.params.name);
-  if (!scriptPath) return res.status(400).json({ error: 'invalid_name', reason: 'invalid_name' });
+app.delete('/api/scripts/*', async (req, res) => {
+  // Accept both files and dirs; validate through shared path guard
+  const raw = req.params[0] || '';
+  const decoded = decodeURIComponent(raw);
+  const segments = decoded.split('/').filter(Boolean);
 
-  if (isRunning && currentScript === req.params.name) {
-    return res.status(409).json({ error: 'script_running', reason: 'script_running' });
+  if (!segments.length) return res.status(400).json({ error: 'invalid_path' });
+
+  const resolved = path.resolve(TESTS_DIR, ...segments);
+  const base = path.resolve(TESTS_DIR);
+  // Traversal guard
+  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
+    return res.status(400).json({ error: 'invalid_path' });
+  }
+  // Segment validation
+  for (const seg of segments) {
+    if (!SEGMENT_RE.test(seg) && !SCRIPT_FILE_RE.test(seg)) {
+      return res.status(400).json({ error: 'invalid_path' });
+    }
   }
 
+  // Check if a running script would be deleted (separator-aware prefix match)
   try {
-    await fsp.unlink(scriptPath);
-    res.json({ deleted: true, name: req.params.name });
+    const runnerUrl = new URL(K6_RUNNER_URL);
+    const statusRes = await new Promise((resolve, reject) => {
+      const r = http.request({
+        hostname: runnerUrl.hostname,
+        port: runnerUrl.port || 8080,
+        path: '/status',
+        method: 'GET',
+      }, (pr) => {
+        let d = '';
+        pr.on('data', (c) => { d += c; });
+        pr.on('end', () => resolve(JSON.parse(d)));
+      });
+      r.on('error', reject);
+      r.end();
+    });
+    if (statusRes.status !== 'idle' && statusRes.script) {
+      const runningResolved = path.resolve(TESTS_DIR, statusRes.script);
+      if (runningResolved === resolved || runningResolved.startsWith(resolved + path.sep)) {
+        return res.status(409).json({ error: 'script_running' });
+      }
+    }
+  } catch { /* runner unreachable — proceed with delete */ }
+
+  try {
+    const stat = await fsp.stat(resolved);
+    if (stat.isDirectory()) {
+      await fsp.rm(resolved, { recursive: true });
+    } else {
+      await fsp.unlink(resolved);
+    }
+    res.json({ deleted: true });
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'not_found' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'delete_failed' });
   }
 });
 
-app.get('/api/status', (_req, res) => {
-  res.json({
-    status: isRunning ? 'running' : 'idle',
-    script: currentScript,
-    containerId,
-    exitCode,
-  });
+app.put('/api/dirs/*', async (req, res) => {
+  const v = validatePath(req.params[0], { isDir: true });
+  if (!v.valid) {
+    if (v.error === 'too_deep') return res.status(400).json({ error: 'too_deep', message: 'Maximum directory depth is 5 levels' });
+    return res.status(400).json({ error: v.error });
+  }
+  await fsp.mkdir(v.resolved, { recursive: true });
+  res.json({ created: true });
 });
 
-app.get('/api/output', (_req, res) => {
-  res.json({ lines: outputLines });
+app.get('/api/reports', async (_req, res) => {
+  const tree = await buildReportsTree(REPORTS_DIR, 'reports');
+  res.json(tree);
 });
 
-app.get('/api/stream', (req, res) => {
-  if (!isRunning) return res.status(404).json({ error: 'not_running' });
-  attachSseClient(res);
-});
+app.post('/api/run', (req, res) => proxyTo('/run', req, res));
+app.post('/api/stop', (req, res) => proxyTo('/stop', req, res));
+app.get('/api/status', (req, res) => proxyTo('/status', req, res));
+app.get('/api/output', (req, res) => proxyTo('/output', req, res));
+app.get('/api/stream', (req, res) => proxyTo('/stream', req, res));
 
-app.post('/api/run', async (req, res) => {
-  if (isRunning) {
-    return res.status(409).json({ error: 'already_running', reason: 'already_running' });
-  }
-
-  const name = req.body?.name;
-  if (!name || typeof name !== 'string') {
-    return res.status(400).json({ error: 'invalid_body', message: 'name is required' });
-  }
-
-  const normalized = name.endsWith('.js') ? name : `${name}.js`;
-  isRunning = true;
-  await startRun(normalized, res);
-});
-
-app.post('/api/stop', async (_req, res) => {
-  if (!isRunning || !activeContainer) {
-    return res.json({ stopped: false });
-  }
-
-  const stopped = await stopActiveContainer();
-  res.json({ stopped });
-});
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-async function main() {
-  if (!HOST_TESTS_PATH) {
-    console.error('HOST_TESTS_PATH is required');
-    process.exit(1);
-  }
-
-  if (!K6_IMAGE) {
-    console.error('K6_IMAGE is required');
-    process.exit(1);
-  }
-
-  try {
-    await fsp.access(TESTS_DIR, fs.constants.F_OK);
-  } catch {
-    console.error(`Tests directory not found at ${TESTS_DIR}`);
-    process.exit(1);
-  }
-
-  try {
-    await docker.listContainers({});
-  } catch (err) {
-    console.error(`Docker daemon unavailable: ${err.message}`);
-    process.exit(1);
-  }
-
-  await cleanupOrphans();
-
-  app.listen(PORT, () => {
-    console.log(`k6 web-ui listening on http://localhost:${PORT}`);
+function startServer(port) {
+  return new Promise((resolve, reject) => {
+    const server = createServer(app);
+    server.listen(port, '127.0.0.1', () => resolve(server));
+    server.on('error', reject);
   });
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  process.on('SIGTERM', () => process.exit(0));
+  process.on('SIGINT', () => process.exit(0));
+
+  startServer(PORT).then(() => {
+    console.log(`k6 web-ui listening on http://localhost:${PORT}`);
+  }).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = { startServer };
