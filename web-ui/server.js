@@ -296,7 +296,7 @@ app.get('/api/stream', (req, res) => proxyTo('/stream', req, res));
 function startServer(port) {
   return new Promise((resolve, reject) => {
     const server = createServer(app);
-    server.listen(port, '127.0.0.1', () => resolve(server));
+    server.listen(port, '0.0.0.0', () => resolve(server));
     server.on('error', reject);
   });
 }
