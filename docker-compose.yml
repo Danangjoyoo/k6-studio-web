@@ -5,16 +5,34 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./tests:/tests
-      # SECURITY: Docker socket grants root-equivalent access; localhost binding only
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - HOST_TESTS_PATH=${PWD}/tests
-      - K6_IMAGE=grafana/k6:0.55.0
-      - K6_EXTRA_HOSTS=host.docker.internal:host-gateway
-      - K6_TARGET_URL=${K6_TARGET_URL:-http://host.docker.internal:8084/healthz}
+      - K6_RUNNER_URL=http://k6:8080
+    depends_on:
+      k6:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  k6:
+    build: ./k6
+    init: true
+    ports:
+      - "127.0.0.1:5665:5665"
+    volumes:
+      - ./tests:/tests
+    environment:
+      - K6_TARGET_URL=${K6_TARGET_URL:-http://host.docker.internal:8084/healthz}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
       retries: 3
       start_period: 5s

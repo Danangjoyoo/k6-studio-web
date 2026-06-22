@@ -1,0 +1,13 @@
+{
+  "name": "k6-runner",
+  "version": "1.0.0",
+  "private": true,
+  "main": "runner.js",
+  "scripts": {
+    "start": "node runner.js",
+    "test": "node --test test/runner.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
