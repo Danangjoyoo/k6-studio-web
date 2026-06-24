@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from "child_process";
+import { createConnection } from "net";
 
 export const K6_BIN = process.env.K6_BIN ?? "k6";
 
@@ -26,11 +27,48 @@ export function buildK6Command(
   return getK6RunArgs(scriptPath);
 }
 
-// The k6 web dashboard binds a single fixed port (5665), so only one run may
-// own it at a time. Track the in-flight child process module-wide and tear it
-// down before launching a new run — otherwise a lingering process keeps the
-// port occupied and every subsequent run's dashboard fails to start.
-let activeChild: ChildProcess | null = null;
+/**
+ * Detects that k6 has finished its test run (all iterations complete).
+ *
+ * k6 emits a results summary table after the test. The most reliable marker
+ * across k6 versions is the `iteration_duration` metric line, which is always
+ * present and appears after all VUs have finished. We use it to trigger a
+ * grace-period SIGTERM so the process exits even when the dashboard SSE
+ * connection is held open by the browser (bug H1).
+ */
+export function isK6SummaryLine(line: string): boolean {
+  return /^iteration_duration\s*\.{2,}\s*:/.test(line.trim());
+}
+
+/**
+ * Wait until port `port` on 127.0.0.1 is no longer accepting connections,
+ * or until `timeoutMs` elapses. Used before releasing the run lock so the
+ * next run never races the kernel socket TIME_WAIT state (bug H2).
+ */
+export function waitForPortFree(
+  port: number,
+  timeoutMs = 5000
+): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    function poll() {
+      const sock = createConnection({ host: "127.0.0.1", port });
+      sock.on("connect", () => {
+        sock.destroy();
+        if (Date.now() < deadline) {
+          setTimeout(poll, 200);
+        } else {
+          resolve();
+        }
+      });
+      sock.on("error", () => {
+        sock.destroy();
+        resolve();
+      });
+    }
+    poll();
+  });
+}
 
 export function runK6(
   scriptPath: string,
@@ -39,58 +77,105 @@ export function runK6(
   signal?: AbortSignal
 ): Promise<number> {
   return new Promise((resolve) => {
-    if (activeChild) {
-      activeChild.kill("SIGKILL");
-      activeChild = null;
-    }
-
     const args = getK6RunArgs(scriptPath);
     const child: ChildProcess = spawn(K6_BIN, args, {
       stdio: "pipe",
       env: { ...process.env, ...getK6RunEnv(reportPath) },
     });
-    activeChild = child;
     let settled = false;
-
-    // Kill k6 if the caller aborts (e.g. the client disconnects from the run
-    // stream or starts another run). Without this, k6 keeps running and — once
-    // its stdout pipe is no longer drained — blocks while still holding the web
-    // dashboard port (5665), preventing any subsequent run's dashboard from
-    // starting.
-    const onAbort = () => {
-      if (settled) return;
-      if (activeChild === child) activeChild = null;
-      child.kill("SIGTERM");
-      // Escalate if it does not exit promptly.
-      setTimeout(() => {
-        if (!settled) child.kill("SIGKILL");
-      }, 2000).unref?.();
-    };
-    if (signal) {
-      if (signal.aborted) onAbort();
-      else signal.addEventListener("abort", onAbort, { once: true });
-    }
+    // Grace timer: started when the k6 summary lines are detected. If k6's
+    // dashboard SSE holds the process alive past the test end, this fires
+    // SIGTERM so `done` can propagate and the terminal stops showing "running".
+    let gracerTimer: ReturnType<typeof setTimeout> | null = null;
+    const GRACE_MS = 2000;
+    let stdoutBuffer = "";
+    let stderrBuffer = "";
 
     const finish = (code: number) => {
       if (settled) return;
       settled = true;
-      if (activeChild === child) activeChild = null;
+      if (gracerTimer) {
+        clearTimeout(gracerTimer);
+        gracerTimer = null;
+      }
       signal?.removeEventListener("abort", onAbort);
       resolve(code);
     };
 
-    function handleData(chunk: Buffer) {
-      for (const line of chunk.toString("utf-8").split("\n")) {
-        if (line.trim()) onLine(line);
+    const triggerGrace = () => {
+      if (settled || gracerTimer) return;
+      gracerTimer = setTimeout(() => {
+        if (!settled) {
+          child.kill("SIGTERM");
+          // Escalate after another 2s if SIGTERM isn't enough
+          setTimeout(() => {
+            if (!settled) child.kill("SIGKILL");
+          }, 2000).unref?.();
+        }
+      }, GRACE_MS);
+    };
+
+    function emitLine(line: string) {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      onLine(line);
+      if (isK6SummaryLine(trimmed)) {
+        triggerGrace();
       }
     }
 
-    child.stdout?.on("data", handleData);
-    child.stderr?.on("data", handleData);
+    const onAbort = () => {
+      if (settled) return;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!settled) child.kill("SIGKILL");
+      }, 2000).unref?.();
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+      } else {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    function handleData(chunk: Buffer, streamName: "stdout" | "stderr") {
+      const text =
+        (streamName === "stdout" ? stdoutBuffer : stderrBuffer) +
+        chunk.toString("utf-8");
+      const lines = text.split(/\r?\n/);
+      const remainder = lines.pop() ?? "";
+
+      if (streamName === "stdout") {
+        stdoutBuffer = remainder;
+      } else {
+        stderrBuffer = remainder;
+      }
+
+      for (const line of lines) {
+        emitLine(line);
+      }
+    }
+
+    function flushBufferedLines() {
+      if (stdoutBuffer.trim()) emitLine(stdoutBuffer);
+      if (stderrBuffer.trim()) emitLine(stderrBuffer);
+      stdoutBuffer = "";
+      stderrBuffer = "";
+    }
+
+    child.stdout?.on("data", (chunk: Buffer) => handleData(chunk, "stdout"));
+    child.stderr?.on("data", (chunk: Buffer) => handleData(chunk, "stderr"));
     child.on("error", (err) => {
       onLine(`[error] ${err.message}`);
       finish(1);
     });
-    child.on("close", (code) => finish(code ?? 1));
+    child.on("close", (code) => {
+      if (!settled) {
+        flushBufferedLines();
+      }
+      finish(code ?? 1);
+    });
   });
 }

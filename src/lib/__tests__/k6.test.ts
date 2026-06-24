@@ -5,7 +5,18 @@ jest.mock("child_process", () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
 }));
 
-import { getK6RunArgs, getK6RunEnv, runK6 } from "@/lib/k6";
+const createConnectionMock = jest.fn();
+jest.mock("net", () => ({
+  createConnection: (...args: unknown[]) => createConnectionMock(...args),
+}));
+
+import {
+  getK6RunArgs,
+  getK6RunEnv,
+  runK6,
+  isK6SummaryLine,
+  waitForPortFree,
+} from "@/lib/k6";
 
 function makeFakeChild() {
   const child = new EventEmitter() as EventEmitter & {
@@ -17,6 +28,13 @@ function makeFakeChild() {
   child.stderr = new EventEmitter();
   child.kill = jest.fn();
   return child;
+}
+
+function makeFakeSocket(behavior: "connect" | "error") {
+  const sock = new EventEmitter() as EventEmitter & { destroy: jest.Mock };
+  sock.destroy = jest.fn();
+  setImmediate(() => sock.emit(behavior));
+  return sock;
 }
 
 describe("k6", () => {
@@ -42,6 +60,42 @@ describe("k6", () => {
     delete process.env.K6_WEB_DASHBOARD_HOST;
   });
 
+  describe("isK6SummaryLine", () => {
+    it("returns true for the iteration_duration line", () => {
+      expect(isK6SummaryLine("     iteration_duration.............: avg=29ms")).toBe(true);
+      expect(isK6SummaryLine("iteration_duration...: avg=1s")).toBe(true);
+    });
+
+    it("returns false for a regular log line", () => {
+      expect(isK6SummaryLine("running (5s), 1/1 VUs")).toBe(false);
+    });
+
+    it("returns false for log text that mentions iteration_duration", () => {
+      expect(isK6SummaryLine("console.log iteration_duration before the run is done")).toBe(false);
+    });
+  });
+
+  describe("waitForPortFree", () => {
+    beforeEach(() => createConnectionMock.mockReset());
+
+    it("resolves immediately when connection is refused (port free)", async () => {
+      createConnectionMock.mockImplementation(() =>
+        makeFakeSocket("error")
+      );
+      await expect(waitForPortFree(5665, 1000)).resolves.toBeUndefined();
+    });
+
+    it("polls until the port stops accepting then resolves", async () => {
+      let calls = 0;
+      createConnectionMock.mockImplementation(() => {
+        calls++;
+        return makeFakeSocket(calls < 2 ? "connect" : "error");
+      });
+      await expect(waitForPortFree(5665, 1000)).resolves.toBeUndefined();
+      expect(calls).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   describe("runK6 process lifecycle", () => {
     beforeEach(() => spawnMock.mockReset());
 
@@ -57,19 +111,6 @@ describe("k6", () => {
       expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     });
 
-    it("kills a still-running previous run before starting a new one", () => {
-      const first = makeFakeChild();
-      const second = makeFakeChild();
-      spawnMock.mockReturnValueOnce(first).mockReturnValueOnce(second);
-
-      runK6("/tmp/a.js", "/tmp/a.html", () => {});
-      // first run still alive (no close emitted)
-      runK6("/tmp/b.js", "/tmp/b.html", () => {});
-
-      expect(first.kill).toHaveBeenCalled();
-      expect(second.kill).not.toHaveBeenCalled();
-    });
-
     it("does not attempt to kill once the process has already closed", () => {
       const child = makeFakeChild();
       spawnMock.mockReturnValue(child);
@@ -81,6 +122,32 @@ describe("k6", () => {
       controller.abort();
       expect(child.kill).not.toHaveBeenCalled();
       return expect(promise).resolves.toBe(0);
+    });
+
+    it("detects a summary line split across stdout chunks and starts grace shutdown", async () => {
+      jest.useFakeTimers();
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+
+      const promise = runK6("/tmp/s.js", "/tmp/r.html", () => {});
+
+      child.stdout.emit("data", Buffer.from("     iteration_"));
+      child.stdout.emit("data", Buffer.from("duration.............: avg=29ms\n"));
+
+      jest.advanceTimersByTime(2000);
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+
+      child.emit("close", 0);
+      await expect(promise).resolves.toBe(0);
+      jest.useRealTimers();
+    });
+
+    it("resolves with the exit code", async () => {
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+      const p = runK6("/tmp/s.js", "/tmp/r.html", () => {});
+      child.emit("close", 0);
+      await expect(p).resolves.toBe(0);
     });
   });
 });
