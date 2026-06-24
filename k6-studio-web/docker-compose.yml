@@ -11,6 +11,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_USE_SSL: "false"
       K6_DASHBOARD_PORT: "5665"
+      K6_BIN: "/usr/local/bin/k6"
     depends_on:
       minio:
         condition: service_healthy
