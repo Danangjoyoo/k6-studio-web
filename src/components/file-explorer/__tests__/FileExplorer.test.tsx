@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import FileExplorer from "@/components/file-explorer/FileExplorer";
 
 global.fetch = jest.fn() as jest.Mock;
@@ -17,6 +17,16 @@ function mockFilesTree(tree: unknown[]) {
       tree,
     }),
   });
+}
+
+function mockFetchSequence(...responses: Array<{ ok?: boolean; json?: unknown }>) {
+  fetchMock.mockReset();
+  for (const response of responses) {
+    fetchMock.mockResolvedValueOnce({
+      ok: response.ok ?? true,
+      json: async () => response.json ?? {},
+    });
+  }
 }
 
 beforeEach(() => {
@@ -60,5 +70,121 @@ describe("FileExplorer", () => {
       "data-path",
       "auth/login.ts"
     );
+  });
+
+  it("opens one folder-scoped script dialog and creates the script under that folder", async () => {
+    mockFetchSequence(
+      {
+        json: {
+          files: [],
+          tree: [
+            { path: "auth/", name: "auth", type: "folder", children: [] },
+          ],
+        },
+      },
+      { json: { name: "auth/login.ts" } },
+      {
+        json: {
+          files: [],
+          tree: [
+            {
+              path: "auth/",
+              name: "auth",
+              type: "folder",
+              children: [
+                { path: "auth/login.ts", name: "login.ts", type: "file" },
+              ],
+            },
+          ],
+        },
+      }
+    );
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const folderRow = await screen.findByTestId("sidebar-folder-item");
+    fireEvent.click(
+      within(folderRow).getByRole("button", { name: "New script here" })
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "New script" })
+    ).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByPlaceholderText("my-test.ts"), {
+      target: { value: "login" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"name":"auth/login.ts"'),
+        })
+      );
+    });
+  });
+
+  it("normalizes folder delete requests through the folder API", async () => {
+    mockFetchSequence(
+      {
+        json: {
+          files: [],
+          tree: [
+            { path: "auth#v1///", name: "auth#v1", type: "folder", children: [] },
+          ],
+        },
+      },
+      { json: {} },
+      { json: { files: [], tree: [] } }
+    );
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const folderRow = await screen.findByTestId("sidebar-folder-item");
+    fireEvent.click(
+      within(folderRow).getByRole("button", { name: "Delete folder" })
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/folder",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: "auth#v1" }),
+        })
+      );
+    });
+  });
+
+  it("encodes file delete URLs while preserving script names", async () => {
+    mockFetchSequence(
+      {
+        json: {
+          files: [],
+          tree: [
+            { path: "script #1.ts", name: "script #1.ts", type: "file" },
+          ],
+        },
+      },
+      { json: {} },
+      { json: { files: [], tree: [] } }
+    );
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const fileRow = await screen.findByTestId("sidebar-file-item");
+    fireEvent.click(
+      within(fileRow).getByRole("button", { name: "Delete script" })
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/files/script%20%231.ts", {
+        method: "DELETE",
+      });
+    });
   });
 });

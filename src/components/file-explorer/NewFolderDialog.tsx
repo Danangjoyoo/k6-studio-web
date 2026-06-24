@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,29 +12,23 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-interface NewFileDialogProps {
-  onCreate: (name: string) => Promise<void>;
+interface NewFolderDialogProps {
+  onCreate: (path: string) => Promise<void>;
+  parentPath?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onTriggerClick?: () => void;
   showTrigger?: boolean;
 }
 
-export function resolveScriptFilename(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed.endsWith(".ts") || trimmed.endsWith(".js")) {
-    return trimmed;
-  }
-  return `${trimmed}.ts`;
-}
-
-export default function NewFileDialog({
+export default function NewFolderDialog({
   onCreate,
+  parentPath,
   open,
   onOpenChange,
   onTriggerClick,
   showTrigger = true,
-}: NewFileDialogProps) {
+}: NewFolderDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [name, setName] = useState("");
   const dialogOpen = open ?? internalOpen;
@@ -53,9 +47,12 @@ export default function NewFileDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
-    const filename = resolveScriptFilename(name);
-    await onCreate(filename);
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const fullPath = parentPath
+      ? `${parentPath.replace(/\/$/, "")}/${trimmed}`
+      : trimmed;
+    await onCreate(fullPath);
     handleOpenChange(false);
   }
 
@@ -67,22 +64,24 @@ export default function NewFileDialog({
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 text-xs focus-visible:ring-run/40"
+              className="gap-1.5 text-xs"
               onClick={onTriggerClick}
             />
           }
         >
-          <Plus className="h-3.5 w-3.5" />
-          New script
+          <FolderPlus className="h-3.5 w-3.5" />
+          New folder
         </DialogTrigger>
       )}
       <DialogContent className="border-border bg-panel-raised">
         <DialogHeader>
-          <DialogTitle>New script</DialogTitle>
+          <DialogTitle>
+            {parentPath ? `New folder in ${parentPath}` : "New folder"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <Input
-            placeholder="my-test.ts"
+            placeholder="folder-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="font-mono text-sm"
