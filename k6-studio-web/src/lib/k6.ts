@@ -6,10 +6,11 @@ export function buildK6Command(
   scriptPath: string,
   reportPath: string
 ): string[] {
+  const port = process.env.K6_DASHBOARD_PORT ?? "5665";
   return [
     "run",
     "--out",
-    `web-dashboard=export=${reportPath}`,
+    `web-dashboard=export=${reportPath}&port=${port}`,
     scriptPath,
   ];
 }
