@@ -10,6 +10,11 @@ jest.mock("net", () => ({
   createConnection: (...args: unknown[]) => createConnectionMock(...args),
 }));
 
+const statMock = jest.fn();
+jest.mock("fs/promises", () => ({
+  stat: (...args: unknown[]) => statMock(...args),
+}));
+
 import {
   getK6RunArgs,
   getK6RunEnv,
@@ -38,6 +43,11 @@ function makeFakeSocket(behavior: "connect" | "error") {
 }
 
 describe("k6", () => {
+  beforeEach(() => {
+    statMock.mockReset();
+    statMock.mockRejectedValue(new Error("report not ready"));
+  });
+
   it("getK6RunArgs returns run command with script path only", () => {
     const args = getK6RunArgs("/tmp/script.js");
     expect(args).toEqual(["run", "/tmp/script.js"]);
@@ -99,16 +109,24 @@ describe("k6", () => {
   describe("runK6 process lifecycle", () => {
     beforeEach(() => spawnMock.mockReset());
 
-    it("kills the child process when the abort signal fires", () => {
+    it("kills the child process when the abort signal fires", async () => {
       const child = makeFakeChild();
       spawnMock.mockReturnValue(child);
       const controller = new AbortController();
 
-      runK6("/tmp/s.js", "/tmp/r.html", () => {}, controller.signal);
+      const promise = runK6(
+        "/tmp/s.js",
+        "/tmp/r.html",
+        () => {},
+        controller.signal
+      );
       expect(child.kill).not.toHaveBeenCalled();
 
       controller.abort();
       expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+
+      child.emit("close", 1);
+      await expect(promise).resolves.toBe(1);
     });
 
     it("does not attempt to kill once the process has already closed", () => {
@@ -136,6 +154,83 @@ describe("k6", () => {
 
       jest.advanceTimersByTime(2000);
       expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+
+      child.emit("close", 0);
+      await expect(promise).resolves.toBe(0);
+      jest.useRealTimers();
+    });
+
+    it("starts grace shutdown after the exported report is stable without a summary", async () => {
+      jest.useFakeTimers();
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+      statMock
+        .mockRejectedValueOnce(new Error("report not ready"))
+        .mockResolvedValueOnce({ size: 1024 })
+        .mockResolvedValueOnce({ size: 1024 });
+
+      const promise = runK6("/tmp/s.js", "/tmp/r.html", () => {});
+
+      await jest.advanceTimersByTimeAsync(1500);
+      expect(child.kill).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+
+      child.emit("close", 0);
+      await expect(promise).resolves.toBe(0);
+      jest.useRealTimers();
+    });
+
+    it("does not start grace shutdown from complete progress rows before report export", async () => {
+      jest.useFakeTimers();
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+
+      const promise = runK6("/tmp/s.js", "/tmp/r.html", () => {});
+
+      child.stdout.emit(
+        "data",
+        Buffer.from(
+          [
+            "running (04.0s), 0/1 VUs, 4 complete and 0 interrupted iterations",
+            "default \u2713 [ 100% ] 1 VUs  4s",
+            "",
+            "",
+          ].join("\n")
+        )
+      );
+
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(child.kill).not.toHaveBeenCalled();
+
+      child.emit("close", 0);
+      await expect(promise).resolves.toBe(0);
+      jest.useRealTimers();
+    });
+
+    it("does not start grace shutdown during a gap before a waiting scenario", async () => {
+      jest.useFakeTimers();
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+
+      const promise = runK6("/tmp/s.js", "/tmp/r.html", () => {});
+
+      child.stdout.emit(
+        "data",
+        Buffer.from(
+          [
+            "running (03.0s), 0/2 VUs, 4 complete and 0 interrupted iterations",
+            "first  \u2713 [ 100% ] 1 VUs    2s",
+            "second \u2022 [   0% ] waiting  3.0s",
+            "",
+            "",
+          ].join("\n")
+        )
+      );
+
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(child.kill).not.toHaveBeenCalled();
 
       child.emit("close", 0);
       await expect(promise).resolves.toBe(0);

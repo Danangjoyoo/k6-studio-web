@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from "child_process";
+import { stat } from "fs/promises";
 import { createConnection } from "net";
 
 export const K6_BIN = process.env.K6_BIN ?? "k6";
@@ -28,13 +29,9 @@ export function buildK6Command(
 }
 
 /**
- * Detects that k6 has finished its test run (all iterations complete).
- *
- * k6 emits a results summary table after the test. The most reliable marker
- * across k6 versions is the `iteration_duration` metric line, which is always
- * present and appears after all VUs have finished. We use it to trigger a
- * grace-period SIGTERM so the process exits even when the dashboard SSE
- * connection is held open by the browser (bug H1).
+ * Detects k6's final summary table. This normally appears after all VUs have
+ * finished, but the dashboard event stream can keep k6 alive before the table
+ * is emitted.
  */
 export function isK6SummaryLine(line: string): boolean {
   return /^iteration_duration\s*\.{2,}\s*:/.test(line.trim());
@@ -83,13 +80,18 @@ export function runK6(
       env: { ...process.env, ...getK6RunEnv(reportPath) },
     });
     let settled = false;
-    // Grace timer: started when the k6 summary lines are detected. If k6's
-    // dashboard SSE holds the process alive past the test end, this fires
-    // SIGTERM so `done` can propagate and the terminal stops showing "running".
+    // Grace timer: started when k6 reaches its summary or finishes exporting
+    // the dashboard report. If the dashboard SSE holds the process alive past
+    // the test end, this fires SIGTERM so `done` can propagate and the terminal
+    // stops showing "running".
     let gracerTimer: ReturnType<typeof setTimeout> | null = null;
+    let reportPollTimer: ReturnType<typeof setInterval> | null = null;
     const GRACE_MS = 2000;
+    const REPORT_POLL_MS = 500;
     let stdoutBuffer = "";
     let stderrBuffer = "";
+    let reportStableSize: number | null = null;
+    let reportPollInFlight = false;
 
     const finish = (code: number) => {
       if (settled) return;
@@ -97,6 +99,10 @@ export function runK6(
       if (gracerTimer) {
         clearTimeout(gracerTimer);
         gracerTimer = null;
+      }
+      if (reportPollTimer) {
+        clearInterval(reportPollTimer);
+        reportPollTimer = null;
       }
       signal?.removeEventListener("abort", onAbort);
       resolve(code);
@@ -114,6 +120,32 @@ export function runK6(
         }
       }, GRACE_MS);
     };
+
+    const pollReportExport = async () => {
+      if (settled || reportPollInFlight) return;
+      reportPollInFlight = true;
+      try {
+        const report = await stat(reportPath);
+        if (report.size <= 0) {
+          reportStableSize = null;
+          return;
+        }
+
+        if (report.size === reportStableSize) {
+          triggerGrace();
+        }
+        reportStableSize = report.size;
+      } catch {
+        reportStableSize = null;
+      } finally {
+        reportPollInFlight = false;
+      }
+    };
+
+    reportPollTimer = setInterval(() => {
+      void pollReportExport();
+    }, REPORT_POLL_MS);
+    reportPollTimer.unref?.();
 
     function emitLine(line: string) {
       const trimmed = line.trim();
