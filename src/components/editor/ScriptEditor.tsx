@@ -30,7 +30,7 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 
     useEffect(() => {
       async function load() {
-        const res = await fetch(`/api/files/${encodeURIComponent(filename)}`);
+        const res = await fetch(`/api/files/${filename}`);
         const data = (await res.json()) as { name: string; content: string };
         setContent(data.content);
         contentRef.current = data.content;
@@ -59,7 +59,7 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 
     async function save() {
       onSaveStatusChange?.("saving");
-      await fetch(`/api/files/${encodeURIComponent(filename)}`, {
+      await fetch(`/api/files/${filename}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: contentRef.current }),

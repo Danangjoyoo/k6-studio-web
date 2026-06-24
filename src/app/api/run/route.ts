@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { writeFile, mkdir, access } from "fs/promises";
-import { join } from "path";
+import { join, basename } from "path";
 import { tmpdir } from "os";
 import { createReadStream } from "fs";
 import {
@@ -9,14 +9,24 @@ import {
   REPORTS_BUCKET,
   ensureBuckets,
 } from "@/lib/minio";
-import { runK6 } from "@/lib/k6";
+import { runK6, waitForPortFree } from "@/lib/k6";
+import { tryAcquire, release, getStatus } from "@/lib/run-lock";
 
 export const dynamic = "force-dynamic";
+
+const DASHBOARD_PORT = parseInt(process.env.K6_DASHBOARD_PORT ?? "5665", 10);
 
 export async function POST(request: Request) {
   const { filename } = (await request.json()) as { filename: string };
   if (!filename) {
     return NextResponse.json({ error: "filename required" }, { status: 400 });
+  }
+
+  if (!tryAcquire(filename)) {
+    return NextResponse.json(
+      { error: "A run is already in progress", status: getStatus() },
+      { status: 409 }
+    );
   }
 
   await ensureBuckets();
@@ -30,15 +40,14 @@ export async function POST(request: Request) {
     objStream.on("error", reject);
   });
 
+  // Use basename so nested paths (e.g. auth/login.ts) don't create sub-dirs
   const runDir = join(tmpdir(), `k6-run-${Date.now()}`);
   await mkdir(runDir, { recursive: true });
-  const scriptPath = join(runDir, filename);
+  const scriptPath = join(runDir, basename(filename));
   const reportPath = join(runDir, "report.html");
   await writeFile(scriptPath, Buffer.concat(chunks).toString("utf-8"), "utf-8");
 
   const encoder = new TextEncoder();
-  // Aborts the k6 child when the HTTP connection is dropped (client navigates
-  // away, starts another run, etc.) so it releases the dashboard port.
   const abortController = new AbortController();
   request.signal.addEventListener("abort", () => abortController.abort());
 
@@ -48,34 +57,41 @@ export async function POST(request: Request) {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
         } catch {
-          // controller already closed (client gone) — ignore
+          // controller already closed
         }
       }
 
-      const exitCode = await runK6(
-        scriptPath,
-        reportPath,
-        (line) => send({ line }),
-        abortController.signal
-      );
-
-      const reportName = `${filename}-${Date.now()}.html`;
       try {
-        await access(reportPath);
-        await client.putObject(
-          REPORTS_BUCKET,
-          reportName,
-          createReadStream(reportPath)
+        const exitCode = await runK6(
+          scriptPath,
+          reportPath,
+          (line) => send({ line }),
+          abortController.signal
         );
-      } catch {
-        send({ line: "[warning] could not save HTML report" });
-      }
 
-      send({ done: true, exitCode, reportName });
-      try {
-        controller.close();
-      } catch {
-        // already closed
+        const reportName = `${filename}-${Date.now()}.html`;
+        try {
+          await access(reportPath);
+          await client.putObject(
+            REPORTS_BUCKET,
+            reportName,
+            createReadStream(reportPath)
+          );
+        } catch {
+          send({ line: "[warning] could not save HTML report" });
+        }
+
+        send({ done: true, exitCode, reportName });
+      } finally {
+        // Wait for the dashboard port to be released before unlocking so the
+        // next run never races the kernel socket (bug H2).
+        await waitForPortFree(DASHBOARD_PORT, 5000);
+        release();
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
       }
     },
     cancel() {

@@ -34,7 +34,7 @@ export default function EditorTab({ filename }: EditorTabProps) {
   const [saveStatus, setSaveStatus] = useState<
     "saved" | "saving" | "unsaved"
   >("saved");
-  const { getSession, runScript, runningScript } = useScriptWorkspace();
+  const { getSession, runScript, globalRunning, globalRunningScript } = useScriptWorkspace();
 
   if (!filename) {
     return (
@@ -47,8 +47,9 @@ export default function EditorTab({ filename }: EditorTabProps) {
   }
 
   const session = getSession(filename);
+  // Blocked when any other script (local session OR server-authoritative) is running
   const anotherScriptRunning =
-    runningScript !== null && runningScript !== filename;
+    globalRunning && globalRunningScript !== filename;
 
   async function handleRun() {
     if (!filename) return;

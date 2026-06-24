@@ -4,11 +4,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import type { RunStatus } from "@/lib/run-lock";
 
 export interface ScriptSession {
   lines: string[];
@@ -31,6 +33,10 @@ interface ScriptWorkspaceValue {
   runScript: (filename: string) => Promise<void>;
   runningScript: string | null;
   runEpoch: number;
+  // Global (server-authoritative) run state
+  globalRunning: boolean;
+  globalRunningScript: string | null;
+  activeRunners: number;
 }
 
 const ScriptWorkspaceContext = createContext<ScriptWorkspaceValue | null>(null);
@@ -46,6 +52,8 @@ function updateSession(
   };
 }
 
+const STATUS_POLL_MS = 1500;
+
 export function ScriptWorkspaceProvider({
   children,
   selectedFile,
@@ -58,7 +66,37 @@ export function ScriptWorkspaceProvider({
   const [sessions, setSessions] = useState<Record<string, ScriptSession>>({});
   const [runningScript, setRunningScript] = useState<string | null>(null);
   const [runEpoch, setRunEpoch] = useState(0);
+  const [globalRunning, setGlobalRunning] = useState(false);
+  const [globalRunningScript, setGlobalRunningScript] = useState<string | null>(null);
+  const [activeRunners, setActiveRunners] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Poll /api/run/status to get authoritative run state (works across tabs/users)
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      while (!cancelled) {
+        try {
+          const res = await fetch("/api/run/status");
+          if (!cancelled && res.ok) {
+            const status = (await res.json()) as RunStatus;
+            setGlobalRunning(status.running);
+            setGlobalRunningScript(status.script);
+            setActiveRunners(status.activeRunners);
+          }
+        } catch {
+          // ignore network errors during polling
+        }
+        if (!cancelled) {
+          await new Promise((r) => setTimeout(r, STATUS_POLL_MS));
+        }
+      }
+    }
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getSession = useCallback(
     (filename: string) => sessions[filename] ?? EMPTY_SESSION,
@@ -88,6 +126,18 @@ export function ScriptWorkspaceProvider({
         body: JSON.stringify({ filename }),
         signal: controller.signal,
       });
+
+      if (res.status === 409) {
+        const body = (await res.json()) as { error: string };
+        setSessions((s) =>
+          updateSession(s, filename, {
+            isRunning: false,
+            lines: [`[blocked] ${body.error ?? "A run is already in progress"}`],
+          })
+        );
+        setRunningScript(null);
+        return;
+      }
 
       const reader = res.body?.getReader();
       if (!reader) return;
@@ -157,8 +207,11 @@ export function ScriptWorkspaceProvider({
       runScript,
       runningScript,
       runEpoch,
+      globalRunning,
+      globalRunningScript,
+      activeRunners,
     }),
-    [selectedFile, onSelectFile, getSession, runScript, runningScript, runEpoch]
+    [selectedFile, onSelectFile, getSession, runScript, runningScript, runEpoch, globalRunning, globalRunningScript, activeRunners]
   );
 
   return (

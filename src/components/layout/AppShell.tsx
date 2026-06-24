@@ -23,16 +23,18 @@ function WorkspaceContent({
   selectedFile,
   onSelectFile,
   onFileDeleted,
+  onFileRenamed,
 }: {
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
   onFileDeleted: (name: string) => void;
+  onFileRenamed: (oldPath: string, newPath: string) => void;
 }) {
-  const { runningScript, runEpoch } = useScriptWorkspace();
+  const { runEpoch, globalRunning, globalRunningScript } = useScriptWorkspace();
 
   return (
     <>
-      <AppHeader isRunning={runningScript !== null} />
+      <AppHeader activeRunners={globalRunning ? 1 : 0} runningScript={globalRunningScript} />
 
       <ResizablePanelGroup
         direction="horizontal"
@@ -49,6 +51,7 @@ function WorkspaceContent({
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
             onFileDeleted={onFileDeleted}
+            onFileRenamed={onFileRenamed}
           />
         </ResizablePanel>
 
@@ -111,7 +114,7 @@ function WorkspaceContent({
                 <LiveDashboardTab
                   scriptName={selectedFile}
                   isActiveRun={
-                    runningScript === selectedFile && selectedFile !== null
+                    globalRunning && globalRunningScript === selectedFile && selectedFile !== null
                   }
                   runEpoch={runEpoch}
                 />
@@ -138,6 +141,10 @@ export default function AppShell() {
     setSelectedFile((current) => (current === name ? null : current));
   }
 
+  function handleFileRenamed(oldPath: string, newPath: string) {
+    setSelectedFile((current) => (current === oldPath ? newPath : current));
+  }
+
   return (
     <div className="grid h-screen grid-rows-[auto_1fr] overflow-hidden bg-background">
       <ScriptWorkspaceProvider
@@ -148,6 +155,7 @@ export default function AppShell() {
           selectedFile={selectedFile}
           onSelectFile={setSelectedFile}
           onFileDeleted={handleFileDeleted}
+          onFileRenamed={handleFileRenamed}
         />
       </ScriptWorkspaceProvider>
     </div>
