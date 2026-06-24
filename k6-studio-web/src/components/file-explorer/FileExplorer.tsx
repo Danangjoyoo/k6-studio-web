@@ -14,6 +14,7 @@ interface FileInfo {
 export interface FileExplorerProps {
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
+  onFileDeleted?: (name: string) => void;
 }
 
 const DEFAULT_SCRIPT = `import http from "k6/http";
@@ -33,6 +34,7 @@ export default function () {
 export default function FileExplorer({
   selectedFile,
   onSelectFile,
+  onFileDeleted,
 }: FileExplorerProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
 
@@ -59,6 +61,7 @@ export default function FileExplorer({
   async function handleDelete(name: string) {
     await fetch(`/api/files/${encodeURIComponent(name)}`, { method: "DELETE" });
     await fetchFiles();
+    onFileDeleted?.(name);
   }
 
   return (
