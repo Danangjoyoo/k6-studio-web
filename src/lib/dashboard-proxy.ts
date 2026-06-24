@@ -9,6 +9,26 @@ export function sanitizeDashboardHeaders(upstream: Headers): Headers {
   return headers;
 }
 
+/**
+ * k6 issues root-absolute redirects (e.g. `/ui` -> `/ui/`). Without rewriting,
+ * the browser would follow `/ui/` against the app origin instead of staying
+ * under the proxy prefix, escaping the dashboard. This keeps redirects scoped.
+ */
+export function rewriteDashboardLocation(
+  location: string | null,
+  prefix: string = DASHBOARD_PROXY_PREFIX
+): string | null {
+  if (!location) return location;
+  if (
+    location.startsWith("/") &&
+    location !== prefix &&
+    !location.startsWith(`${prefix}/`)
+  ) {
+    return `${prefix}${location}`;
+  }
+  return location;
+}
+
 export function shouldRewriteDashboardBody(contentType: string | null): boolean {
   if (!contentType) return false;
   const lower = contentType.toLowerCase();
@@ -44,19 +64,15 @@ export function rewriteDashboardBody(
     result = result.replace(pattern, wsTarget);
   }
 
-  // Root-absolute asset paths (avoid double-prefix)
+  // Root-absolute asset paths (avoid double-prefix). Relative paths like
+  // `./assets/...` are intentionally left alone: the dashboard is served at
+  // `${prefix}/ui/`, so they resolve to `${prefix}/ui/assets/...` natively.
+  // (A <base> tag is deliberately NOT injected — it would override that
+  // resolution and break asset loading.)
   result = result.replace(
     /(\s(?:src|href)=["'])\/(?!api\/dashboard\/)/g,
     `$1${prefix}/`
   );
-
-  // Inject <base> for HTML documents missing one
-  if (/<html[\s>]/i.test(result) && !/<base\s/i.test(result)) {
-    result = result.replace(
-      /<head([^>]*)>/i,
-      `<head$1><base href="${prefix}/">`
-    );
-  }
 
   return result;
 }

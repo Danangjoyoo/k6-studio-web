@@ -20,18 +20,27 @@ export interface FileExplorerProps {
   onFileDeleted?: (name: string) => void;
 }
 
-const DEFAULT_SCRIPT = `import http from "k6/http";
-import { sleep } from "k6";
+const DEFAULT_SCRIPT = `// example script
+import http from 'k6/http';
+import { sleep } from 'k6';
 
 export const options = {
-  vus: 10,
-  duration: "30s",
+  stages: [
+    { duration: '5s', target: 10 }, // traffic ramp-up from 1 to a higher 10 users over 5s.
+    { duration: '15s', target: 10 }, // stay at higher 10 users for 15s
+    { duration: '5s', target: 0 }, // ramp-down to 0 users
+  ],
 };
 
-export default function () {
-  http.get("https://test.k6.io");
+export default () => {
+  const urlRes = http.get("https://test.k6.io");
   sleep(1);
-}
+  // MORE STEPS
+  // Here you can have more steps or complex script
+  // Step1
+  // Step2
+  // etc.
+};
 `;
 
 export default function FileExplorer({

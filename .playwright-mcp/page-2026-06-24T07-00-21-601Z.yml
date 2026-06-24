@@ -1,0 +1,50 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]:
+          - paragraph [ref=e10]: k6 Studio
+          - paragraph [ref=e11]: Load lab
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Scripts
+          - generic [ref=e18]: "2"
+        - generic [ref=e19]:
+          - button "test1.ts" [ref=e20] [cursor=pointer]:
+            - generic [ref=e21]:
+              - img [ref=e22]
+              - generic [ref=e27]: test1.ts
+            - button [ref=e28]:
+              - img
+          - button "test2.ts" [ref=e29] [cursor=pointer]:
+            - generic [ref=e30]:
+              - img [ref=e31]
+              - generic [ref=e36]: test2.ts
+            - button [ref=e37]:
+              - img
+        - button "Create script" [ref=e39]:
+          - img
+          - text: Create script
+      - separator [ref=e40]:
+        - img [ref=e42]
+      - main [ref=e50]:
+        - generic [ref=e51]:
+          - tablist [ref=e52]:
+            - tab "Editor" [selected] [ref=e53]:
+              - img
+              - text: Editor
+            - tab "Live dashboard" [ref=e54]:
+              - img
+              - text: Live dashboard
+            - tab "Test history" [ref=e55]:
+              - img
+              - text: Test history
+          - tabpanel "Editor" [ref=e56]:
+            - generic [ref=e57]:
+              - img [ref=e59]
+              - generic [ref=e63]:
+                - paragraph [ref=e64]: Select a file
+                - paragraph [ref=e65]: Choose a script from the sidebar, or create one. Then edit and run your load test.
+  - alert [ref=e66]

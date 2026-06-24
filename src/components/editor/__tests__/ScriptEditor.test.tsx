@@ -39,6 +39,9 @@ jest.mock("@monaco-editor/react", () => ({
 }));
 
 global.fetch = jest.fn((url: string, opts?: RequestInit) => {
+  if (url === "/k6-types.json") {
+    return Promise.resolve({ ok: true, json: async () => [] });
+  }
   if (!opts?.method || opts.method === "GET") {
     return Promise.resolve({
       ok: true,

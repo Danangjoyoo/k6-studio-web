@@ -1,0 +1,104 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]:
+          - paragraph [ref=e10]: k6 Studio
+          - paragraph [ref=e11]: Load lab
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Scripts
+          - generic [ref=e18]: "2"
+        - generic [ref=e19]:
+          - button "test1.ts" [active] [ref=e59] [cursor=pointer]:
+            - generic [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e66]: test1.ts
+            - button [ref=e67]:
+              - img
+          - button "test2.ts" [ref=e68] [cursor=pointer]:
+            - generic [ref=e69]:
+              - img [ref=e70]
+              - generic [ref=e75]: test2.ts
+            - button [ref=e76]:
+              - img
+        - button "Create script" [ref=e31]:
+          - img
+          - text: Create script
+      - separator [ref=e32]:
+        - img [ref=e34]
+      - main [ref=e42]:
+        - generic [ref=e77]: test1.ts
+        - generic [ref=e43]:
+          - tablist [ref=e44]:
+            - tab "Editor" [selected] [ref=e45]:
+              - img
+              - text: Editor
+            - tab "Live dashboard" [ref=e46]:
+              - img
+              - text: Live dashboard
+            - tab "Test history" [ref=e47]:
+              - img
+              - text: Test history
+          - tabpanel "Editor" [ref=e48]:
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - generic [ref=e80]: test1.ts
+                - generic [ref=e83]: Saved
+                - button "Save script" [ref=e84]:
+                  - img
+                  - text: Save script
+                - button "Run test" [ref=e85]:
+                  - img
+                  - text: Run test
+              - generic [ref=e86]:
+                - code [ref=e91]:
+                  - generic [ref=e92]:
+                    - textbox "Editor content" [ref=e93]
+                    - textbox [ref=e94]
+                    - generic [ref=e96]:
+                      - generic [ref=e98]: "1"
+                      - generic [ref=e100]: "2"
+                      - generic [ref=e102]: "3"
+                      - generic [ref=e103]:
+                        - generic [ref=e104] [cursor=pointer]: 
+                        - generic [ref=e105]: "4"
+                      - generic [ref=e107]: "5"
+                      - generic [ref=e109]: "6"
+                      - generic [ref=e111]: "7"
+                      - generic [ref=e113]: "8"
+                      - generic [ref=e114]:
+                        - generic [ref=e115] [cursor=pointer]: 
+                        - generic [ref=e116]: "9"
+                      - generic [ref=e118]: "10"
+                      - generic [ref=e120]: "11"
+                      - generic [ref=e122]: "12"
+                      - generic [ref=e125]: "13"
+                    - generic [ref=e147]:
+                      - generic [ref=e149]: import http from "k6/http";
+                      - generic [ref=e151]: "import { sleep } from \"k6\";"
+                      - generic [ref=e154]: "export const options = {"
+                      - generic [ref=e156]: "vus: 10,"
+                      - generic [ref=e158]: "duration: \"30s\","
+                      - generic [ref=e160]: "};"
+                      - generic [ref=e163]: "export default function () {"
+                      - generic [ref=e165]: http.get("https://test.k6.io");
+                      - generic [ref=e167]: sleep(1);
+                      - generic [ref=e169]: "}"
+                - separator [ref=e172]:
+                  - img [ref=e174]
+                - generic [ref=e182]:
+                  - generic [ref=e183]:
+                    - generic [ref=e184]: Output
+                    - generic [ref=e187]: Idle
+                  - generic [ref=e188]:
+                    - paragraph: Run a test to see output here.
+                    - generic [ref=e192]:
+                      - generic:
+                        - textbox "Terminal input"
+  - alert [ref=e58]
+  - generic [ref=e207]:
+    - alert
+    - alert

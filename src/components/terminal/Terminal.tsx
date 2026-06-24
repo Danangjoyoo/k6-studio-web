@@ -24,6 +24,7 @@ export default function Terminal({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const writtenCountRef = useRef(0);
   const prevResetKeyRef = useRef<string | undefined>(resetKey);
+  const userScrolledUpRef = useRef(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -38,6 +39,12 @@ export default function Terminal({
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    // Track whether the user has manually scrolled up so we don't override it
+    term.onScroll(() => {
+      const buf = term.buffer.active;
+      userScrolledUpRef.current = buf.viewportY < buf.baseY;
+    });
+
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
     });
@@ -50,6 +57,7 @@ export default function Terminal({
       fitAddonRef.current = null;
       writtenCountRef.current = 0;
       prevResetKeyRef.current = undefined;
+      userScrolledUpRef.current = false;
     };
   }, []);
 
@@ -70,6 +78,7 @@ export default function Terminal({
     ) {
       term.clear();
       writtenCountRef.current = 0;
+      userScrolledUpRef.current = false;
     }
 
     const toAppend = getLinesToAppend(lines, writtenCountRef.current);
@@ -78,7 +87,7 @@ export default function Terminal({
     }
     writtenCountRef.current = lines.length;
 
-    if (toAppend.length > 0) {
+    if (toAppend.length > 0 && !userScrolledUpRef.current) {
       term.scrollToBottom();
     }
 

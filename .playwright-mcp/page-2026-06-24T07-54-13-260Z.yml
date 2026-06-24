@@ -1,0 +1,42 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]:
+          - paragraph [ref=e10]: k6 Studio
+          - paragraph [ref=e11]: Load lab
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Scripts
+          - generic [ref=e18]: "0"
+        - generic [ref=e20]:
+          - img [ref=e22]
+          - generic [ref=e27]:
+            - paragraph [ref=e28]: No scripts yet
+            - paragraph [ref=e29]: Create a script to start a load test.
+        - button "Create script" [ref=e31]:
+          - img
+          - text: Create script
+      - separator [ref=e32]:
+        - img [ref=e34]
+      - main [ref=e42]:
+        - generic [ref=e43]:
+          - tablist [ref=e44]:
+            - tab "Editor" [selected] [ref=e45]:
+              - img
+              - text: Editor
+            - tab "Live dashboard" [ref=e46]:
+              - img
+              - text: Live dashboard
+            - tab "Test history" [ref=e47]:
+              - img
+              - text: Test history
+          - tabpanel "Editor" [ref=e48]:
+            - generic [ref=e49]:
+              - img [ref=e51]
+              - generic [ref=e55]:
+                - paragraph [ref=e56]: Select a file
+                - paragraph [ref=e57]: Choose a script from the sidebar, or create one. Then edit and run your load test.
+  - alert [ref=e58]

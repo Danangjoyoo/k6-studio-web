@@ -11,6 +11,7 @@ const mockClear = jest.fn();
 const mockOpen = jest.fn();
 const mockDispose = jest.fn();
 const mockLoadAddon = jest.fn();
+const mockOnScroll = jest.fn();
 const mockFit = jest.fn();
 const mockTerminalCtor = jest.fn();
 
@@ -30,6 +31,8 @@ jest.mock("@xterm/xterm", () => ({
       clear: mockClear,
       loadAddon: mockLoadAddon,
       dispose: mockDispose,
+      onScroll: mockOnScroll,
+      buffer: { active: { viewportY: 0, baseY: 0 } },
     };
   }),
 }));

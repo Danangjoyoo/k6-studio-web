@@ -45,8 +45,8 @@ describe("LiveDashboardTab", () => {
     await waitFor(() => {
       const iframe = screen.getByTitle("k6 Live Dashboard");
       expect(iframe).toBeInTheDocument();
-      expect(iframe.getAttribute("src")).toBe("/api/dashboard/");
+      expect(iframe.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
     });
-    expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/");
+    expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/ui/");
   });
 });

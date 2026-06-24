@@ -8,7 +8,8 @@ import {
   useState,
 } from "react";
 import MonacoEditor from "@monaco-editor/react";
-import type * as Monaco from "monaco-editor";
+import type { Monaco } from "@monaco-editor/react";
+import type * as MonacoEditor_ from "monaco-editor";
 
 export interface ScriptEditorHandle {
   save: () => Promise<void>;
@@ -24,7 +25,7 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
   function ScriptEditor({ filename, onSaveStatusChange }, ref) {
     const [content, setContent] = useState("");
     const contentRef = useRef("");
-    const editorInstanceRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+    const editorInstanceRef = useRef<MonacoEditor_.editor.IStandaloneCodeEditor | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -74,13 +75,50 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
     }));
 
     function handleEditorMount(
-      editor: Monaco.editor.IStandaloneCodeEditor,
-      monaco: typeof Monaco
+      editor: MonacoEditor_.editor.IStandaloneCodeEditor,
+      monaco: Monaco
     ) {
       editorInstanceRef.current = editor;
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         void save();
       });
+
+      // Bundler module resolution (100) maps the ESM-style `.js` imports inside
+      // @types/k6 v2 to their `.d.ts` counterparts. Explicit `paths` map the
+      // bare/subpath specifiers ("k6", "k6/http", "k6/net/grpc", …) directly to
+      // the injected declaration files — Monaco's worker does not perform the
+      // node_modules/@types directory fallback, so this mapping is required.
+      monaco.typescript.typescriptDefaults.setCompilerOptions({
+        ...monaco.typescript.typescriptDefaults.getCompilerOptions(),
+        moduleResolution: 100, // ModuleResolutionKind.Bundler
+        allowNonTsExtensions: true,
+        baseUrl: "file:///",
+        paths: {
+          k6: ["node_modules/@types/k6/index.d.ts"],
+          "k6/*": ["node_modules/@types/k6/*/index.d.ts"],
+        },
+      });
+
+      // Inject k6 type definitions generated at build time (best-effort).
+      // Each .d.ts file is also registered at the .js path so that relative
+      // cross-imports like `import ... from "../html/index.js"` resolve.
+      void fetch("/k6-types.json")
+        .then((r) => r.json())
+        .then((types: Array<{ path: string; content: string }>) => {
+          for (const { path, content } of types) {
+            const base = `file:///node_modules/@types/k6/${path}`;
+            monaco.typescript.typescriptDefaults.addExtraLib(content, base);
+            if (path.endsWith(".d.ts")) {
+              monaco.typescript.typescriptDefaults.addExtraLib(
+                content,
+                base.replace(/\.d\.ts$/, ".js")
+              );
+            }
+          }
+        })
+        .catch(() => {
+          // Types unavailable — squiggles remain but editor still works
+        });
     }
 
     return (

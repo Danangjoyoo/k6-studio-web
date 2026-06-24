@@ -37,16 +37,26 @@ export async function POST(request: Request) {
   await writeFile(scriptPath, Buffer.concat(chunks).toString("utf-8"), "utf-8");
 
   const encoder = new TextEncoder();
+  // Aborts the k6 child when the HTTP connection is dropped (client navigates
+  // away, starts another run, etc.) so it releases the dashboard port.
+  const abortController = new AbortController();
+  request.signal.addEventListener("abort", () => abortController.abort());
+
   const readable = new ReadableStream({
     async start(controller) {
       function send(obj: Record<string, unknown>) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)
-        );
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        } catch {
+          // controller already closed (client gone) — ignore
+        }
       }
 
-      const exitCode = await runK6(scriptPath, reportPath, (line) =>
-        send({ line })
+      const exitCode = await runK6(
+        scriptPath,
+        reportPath,
+        (line) => send({ line }),
+        abortController.signal
       );
 
       const reportName = `${filename}-${Date.now()}.html`;
@@ -62,7 +72,14 @@ export async function POST(request: Request) {
       }
 
       send({ done: true, exitCode, reportName });
-      controller.close();
+      try {
+        controller.close();
+      } catch {
+        // already closed
+      }
+    },
+    cancel() {
+      abortController.abort();
     },
   });
 

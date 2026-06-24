@@ -1,0 +1,54 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]:
+          - paragraph [ref=e10]: k6 Studio
+          - paragraph [ref=e11]: Load lab
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Scripts
+          - generic [ref=e18]: "2"
+        - generic [ref=e19]:
+          - button "test1.ts" [ref=e59] [cursor=pointer]:
+            - generic [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e66]: test1.ts
+            - button [ref=e67]:
+              - img
+          - button "test2.ts" [ref=e68] [cursor=pointer]:
+            - generic [ref=e69]:
+              - img [ref=e70]
+              - generic [ref=e75]: test2.ts
+            - button [ref=e76]:
+              - img
+        - button "Create script" [ref=e31]:
+          - img
+          - text: Create script
+      - separator [ref=e32]:
+        - img [ref=e34]
+      - main [ref=e42]:
+        - generic [ref=e77]: test2.ts
+        - generic [ref=e43]:
+          - tablist [ref=e44]:
+            - tab "Editor" [ref=e45]:
+              - img
+              - text: Editor
+            - tab "Live dashboard" [active] [selected] [ref=e46]:
+              - img
+              - text: Live dashboard
+            - tab "Test history" [ref=e47]:
+              - img
+              - text: Test history
+          - tabpanel "Live dashboard" [ref=e285]:
+            - generic [ref=e286]:
+              - img [ref=e288]
+              - generic [ref=e290]:
+                - paragraph [ref=e291]: Dashboard only available during a run
+                - paragraph [ref=e292]: The live dashboard starts automatically when you run test2.ts. Switch to the Editor tab and click "Run test" to begin.
+  - alert [ref=e58]
+  - generic [ref=e263]:
+    - alert
+    - alert

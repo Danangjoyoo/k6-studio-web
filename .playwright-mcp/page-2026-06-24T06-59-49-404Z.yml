@@ -1,0 +1,24 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img [ref=e8]
+        - navigation [ref=e10]:
+          - generic [ref=e11]:
+            - button "Overview" [ref=e12] [cursor=pointer]
+            - button "Timings" [ref=e13] [cursor=pointer]
+            - button "Summary" [ref=e14] [cursor=pointer]
+      - generic [ref=e15]:
+        - generic [ref=e17]:
+          - generic [ref=e19]:
+            - img [ref=e21]
+            - generic [ref=e24]: 0s
+          - img [ref=e28]
+        - button "Report" [ref=e32] [cursor=pointer]
+        - button "Menu" [ref=e33] [cursor=pointer]:
+          - img [ref=e35]
+    - progressbar [ref=e40]
+  - main [ref=e41]:
+    - generic [ref=e42]:
+      - img [ref=e44]
+      - heading "Loading..." [level=2] [ref=e48]

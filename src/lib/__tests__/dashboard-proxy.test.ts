@@ -1,6 +1,7 @@
 import {
   DASHBOARD_PROXY_PREFIX,
   rewriteDashboardBody,
+  rewriteDashboardLocation,
   sanitizeDashboardHeaders,
   shouldRewriteDashboardBody,
 } from "@/lib/dashboard-proxy";
@@ -23,10 +24,16 @@ describe("dashboard-proxy", () => {
   });
 
   describe("rewriteDashboardBody", () => {
-    it("injects base href for HTML", () => {
+    it("does NOT inject a <base> tag (relative assets resolve under /ui/)", () => {
       const html = "<html><head></head><body></body></html>";
       const result = rewriteDashboardBody(html);
-      expect(result).toContain(`<base href="${DASHBOARD_PROXY_PREFIX}/">`);
+      expect(result).not.toContain("<base ");
+    });
+
+    it("leaves relative asset paths untouched", () => {
+      const html = '<script src="./assets/app.js"></script>';
+      const result = rewriteDashboardBody(html);
+      expect(result).toContain('src="./assets/app.js"');
     });
 
     it("rewrites root-absolute src paths", () => {
@@ -45,6 +52,28 @@ describe("dashboard-proxy", () => {
       const js = 'const ws = new WebSocket("ws://0.0.0.0:5665/ws");';
       const result = rewriteDashboardBody(js, { requestHost: "localhost:3000" });
       expect(result).toContain('ws://localhost:3000/api/dashboard/ws');
+    });
+  });
+
+  describe("rewriteDashboardLocation", () => {
+    it("prefixes root-absolute redirect targets so they stay under the proxy", () => {
+      expect(rewriteDashboardLocation("/ui/")).toBe(`${DASHBOARD_PROXY_PREFIX}/ui/`);
+      expect(rewriteDashboardLocation("/ui?endpoint=/")).toBe(
+        `${DASHBOARD_PROXY_PREFIX}/ui?endpoint=/`
+      );
+    });
+
+    it("leaves already-prefixed locations untouched", () => {
+      expect(rewriteDashboardLocation(`${DASHBOARD_PROXY_PREFIX}/ui/`)).toBe(
+        `${DASHBOARD_PROXY_PREFIX}/ui/`
+      );
+    });
+
+    it("leaves absolute URLs and missing locations untouched", () => {
+      expect(rewriteDashboardLocation("http://example.com/ui/")).toBe(
+        "http://example.com/ui/"
+      );
+      expect(rewriteDashboardLocation(null)).toBeNull();
     });
   });
 

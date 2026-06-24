@@ -1,0 +1,124 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]:
+          - paragraph [ref=e10]: k6 Studio
+          - paragraph [ref=e11]: Load lab
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Scripts
+          - generic [ref=e18]: "2"
+        - generic [ref=e19]:
+          - button "test1.ts" [ref=e59] [cursor=pointer]:
+            - generic [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e66]: test1.ts
+            - button [ref=e67]:
+              - img
+          - button "test2.ts" [active] [ref=e68] [cursor=pointer]:
+            - generic [ref=e69]:
+              - img [ref=e70]
+              - generic [ref=e75]: test2.ts
+            - button [ref=e76]:
+              - img
+        - button "Create script" [ref=e31]:
+          - img
+          - text: Create script
+      - separator [ref=e32]:
+        - img [ref=e34]
+      - main [ref=e42]:
+        - generic [ref=e77]: test2.ts
+        - generic [ref=e43]:
+          - tablist [ref=e44]:
+            - tab "Editor" [selected] [ref=e45]:
+              - img
+              - text: Editor
+            - tab "Live dashboard" [ref=e46]:
+              - img
+              - text: Live dashboard
+            - tab "Test history" [ref=e47]:
+              - img
+              - text: Test history
+          - tabpanel "Editor" [ref=e48]:
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - generic [ref=e80]: test2.ts
+                - generic [ref=e83]: Saved
+                - button "Save script" [ref=e84]:
+                  - img
+                  - text: Save script
+                - button "Run test" [ref=e85]:
+                  - img
+                  - text: Run test
+              - generic [ref=e86]:
+                - code [ref=e91]:
+                  - generic [ref=e92]:
+                    - textbox "Editor content" [ref=e93]
+                    - textbox [ref=e94]
+                    - generic [ref=e96]:
+                      - generic [ref=e98]: "1"
+                      - generic [ref=e100]: "2"
+                      - generic [ref=e102]: "3"
+                      - generic [ref=e104]: "4"
+                      - generic [ref=e105]:
+                        - generic [ref=e106] [cursor=pointer]: 
+                        - generic [ref=e107]: "5"
+                      - generic [ref=e108]:
+                        - generic [ref=e109] [cursor=pointer]: 
+                        - generic [ref=e110]: "6"
+                      - generic [ref=e112]: "7"
+                      - generic [ref=e114]: "8"
+                      - generic [ref=e116]: "9"
+                      - generic [ref=e118]: "10"
+                      - generic [ref=e120]: "11"
+                      - generic [ref=e122]: "12"
+                      - generic [ref=e123]:
+                        - generic [ref=e124] [cursor=pointer]: 
+                        - generic [ref=e125]: "13"
+                      - generic [ref=e127]: "14"
+                      - generic [ref=e129]: "15"
+                      - generic [ref=e131]: "16"
+                      - generic [ref=e133]: "17"
+                      - generic [ref=e135]: "18"
+                      - generic [ref=e137]: "19"
+                      - generic [ref=e139]: "20"
+                      - generic [ref=e141]: "21"
+                      - generic [ref=e144]: "22"
+                    - generic [ref=e185]:
+                      - generic [ref=e187]: // example script
+                      - generic [ref=e189]: import http from 'k6/http';
+                      - generic [ref=e191]: "import { sleep } from 'k6';"
+                      - generic [ref=e194]: "export const options = {"
+                      - generic [ref=e196]: "stages: ["
+                      - generic [ref=e198]: "{ duration: '5s', target: 10 }, // traffic ramp-up from 1 to a higher 10 users over 5s."
+                      - generic [ref=e200]: "{ duration: '15s', target: 10 }, // stay at higher 10 users for 15s"
+                      - generic [ref=e202]: "{ duration: '5s', target: 0 }, // ramp-down to 0 users"
+                      - generic [ref=e204]: "],"
+                      - generic [ref=e206]: "};"
+                      - generic [ref=e209]: "export default () => {"
+                      - generic [ref=e211]: const urlRes = http.get("https://test.k6.io");
+                      - generic [ref=e213]: sleep(1);
+                      - generic [ref=e215]: // MORE STEPS
+                      - generic [ref=e217]: // Here you can have more steps or complex script
+                      - generic [ref=e219]: // Step1
+                      - generic [ref=e221]: // Step2
+                      - generic [ref=e223]: // etc.
+                      - generic [ref=e225]: "};"
+                - separator [ref=e228]:
+                  - img [ref=e230]
+                - generic [ref=e238]:
+                  - generic [ref=e239]:
+                    - generic [ref=e240]: Output
+                    - generic [ref=e243]: Idle
+                  - generic [ref=e244]:
+                    - paragraph: Run a test to see output here.
+                    - generic [ref=e248]:
+                      - generic:
+                        - textbox "Terminal input"
+  - alert [ref=e58]
+  - generic [ref=e263]:
+    - alert
+    - alert

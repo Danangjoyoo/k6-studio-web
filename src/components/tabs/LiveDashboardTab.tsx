@@ -40,7 +40,7 @@ export default function LiveDashboardTab({
     async function probe() {
       while (!cancelled) {
         try {
-          const res = await fetch("/api/dashboard/");
+          const res = await fetch("/api/dashboard/ui/");
           if (cancelled) return;
           if (res.ok) {
             setAvailable(true);
@@ -122,7 +122,7 @@ export default function LiveDashboardTab({
     <div className="h-full bg-panel p-2">
       <iframe
         key={`${scriptName}-${runEpoch}`}
-        src="/api/dashboard/"
+        src="/api/dashboard/ui/?endpoint=/api/dashboard/"
         className="h-full w-full rounded-md border border-border ring-1 ring-border"
         title="k6 Live Dashboard"
       />
