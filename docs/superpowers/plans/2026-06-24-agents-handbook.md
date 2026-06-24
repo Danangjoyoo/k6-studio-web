@@ -1,3 +1,36 @@
+# AGENTS.md Handbook Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the minimal `AGENTS.md` with a practical repository handbook for AI agents working on k6 Studio Web.
+
+**Architecture:** This is a documentation-only change. `AGENTS.md` remains the single repository-level instruction file and gains project context, commands, Docker/deployment notes, styling guidance, and feature cautions while preserving the existing Next.js warning at the top.
+
+**Tech Stack:** Markdown, Next.js 15.5.19 App Router, TypeScript, Tailwind CSS, shadcn/Base UI, MinIO, k6, Docker Compose.
+
+---
+
+### Task 1: Expand AGENTS.md Handbook
+
+**Files:**
+- Modify: `AGENTS.md`
+- Reference: `docs/superpowers/specs/2026-06-24-agents-handbook-design.md`
+
+- [ ] **Step 1: Re-read the approved spec**
+
+Run:
+
+```bash
+sed -n '1,260p' docs/superpowers/specs/2026-06-24-agents-handbook-design.md
+```
+
+Expected: The spec includes sections for project identity, architecture, commands, runtime, Docker/deployment, implementation conventions, styling guidance, and feature cautions.
+
+- [ ] **Step 2: Replace AGENTS.md with the handbook**
+
+Set `AGENTS.md` to exactly this content:
+
+```markdown
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
@@ -142,3 +175,34 @@ The live dashboard is served through the app so users do not need to open a sepa
 3. For Next.js-sensitive edits, verify current local behavior or docs instead of relying on memory.
 4. For Docker/deployment-sensitive edits, consider both local host execution and Compose/container execution.
 5. Run focused tests first, then broader verification when the change touches shared behavior.
+```
+
+- [ ] **Step 3: Verify the handbook content**
+
+Run:
+
+```bash
+sed -n '1,260p' AGENTS.md
+```
+
+Expected: The file starts with the existing Next.js warning and includes the new handbook sections, including Docker/deployment and design styling.
+
+- [ ] **Step 4: Check the diff is scoped**
+
+Run:
+
+```bash
+git diff -- AGENTS.md docs/superpowers/plans/2026-06-24-agents-handbook.md
+```
+
+Expected: Only `AGENTS.md` and this plan file are changed by this implementation plan.
+
+- [ ] **Step 5: Final verification**
+
+Run:
+
+```bash
+rg -n "Docker And Deployment|Design Styling|Before Coding|k6 Studio Web Agent Handbook" AGENTS.md
+```
+
+Expected: All four section names are found.
