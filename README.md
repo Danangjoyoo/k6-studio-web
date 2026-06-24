@@ -1,82 +1,36 @@
-# k6 Load Test Platform
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-A browser-based local load testing platform using [k6](https://k6.io/). Edit scripts in the browser, run tests, and stream live output — no terminal required after setup.
+## Getting Started
 
-## Prerequisites
-
-- **macOS / Windows:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Compose v2
-- **Linux:** Docker Engine + [Compose plugin](https://docs.docker.com/compose/install/)
-- `make` (pre-installed on macOS/Linux; Windows users can use Git Bash or WSL)
-
-## Quick start
+First, run the development server:
 
 ```bash
-# Pull the pinned k6 image first (one-time)
-make pull
-
-# Start the web UI
-make up
-
-# Open the editor
-open http://localhost:3000   # macOS
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-## Using the web UI
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-1. Open **http://localhost:3000**
-2. Select a script from the sidebar (or create a new one)
-3. Edit in the Monaco editor and click **Save**
-4. Click **Run** to start a load test — output streams live in the output panel
-5. Click **Dashboard** while a test is running to open the k6 web dashboard at http://localhost:5665
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-Scripts are saved to `./tests/` on your host and persist across container restarts.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Reports
+## Learn More
 
-After each run, two files are written to `tests/reports/`:
+To learn more about Next.js, take a look at the following resources:
 
-| File | Format | Contents |
-|---|---|---|
-| `summary-<timestamp>.html` | Self-contained HTML | Visual report, openable in any browser |
-| `summary-<timestamp>.json` | JSON | Machine-readable metrics summary |
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-Timestamp format: `YYYYMMDDTHHmmss` (e.g. `20260622T130512`). HTML and JSON from the same run share the same timestamp stem.
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-> Reports are git-ignored and local-only.
+## Deploy on Vercel
 
-## Changing the target
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Override `K6_TARGET_URL` in `.env` or docker-compose environment:
-
-```bash
-K6_TARGET_URL=http://host.docker.internal:9090/ping make up
-```
-
-The default target is `http://host.docker.internal:8084/healthz`.
-
-## Security note
-
-The web-ui service mounts `/var/run/docker.sock`, which grants root-equivalent access to the Docker daemon. The UI is bound to `127.0.0.1:3000` only — do not expose this service on a shared or internet-facing network without adding authentication.
-
-## Makefile commands
-
-| Command | Description |
-|---|---|
-| `make pull` | Pull the pinned k6 image (`grafana/k6:0.55.0`) |
-| `make up` | Build and start the web UI (waits for healthcheck) |
-| `make down` | Stop all services |
-| `make logs` | Follow web-ui container logs |
-| `make version` | Print k6 version |
-
-## Migration from CLI workflow
-
-The previous `make run` workflow (direct k6 container via compose profile) has been replaced by the web UI. To run tests now:
-
-1. `make up`
-2. Open http://localhost:3000 and click **Run**
-
-## Checking the k6 version
-
-```bash
-make version
-```
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

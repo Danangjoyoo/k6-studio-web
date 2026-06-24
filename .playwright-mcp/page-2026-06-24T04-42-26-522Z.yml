@@ -1,0 +1,5 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: Scripts
+    - button "+ New Script" [ref=e8]
+  - generic [ref=e10]: Select a file to edit

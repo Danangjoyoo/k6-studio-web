@@ -1,0 +1,45 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: Scripts
+      - generic [ref=e6]:
+        - generic [ref=e11] [cursor=pointer]:
+          - generic [ref=e12]:
+            - img [ref=e13]
+            - generic [ref=e18]: smoke-test.js
+          - button [ref=e19]:
+            - img
+        - generic [ref=e20] [cursor=pointer]:
+          - generic [ref=e21]:
+            - img [ref=e22]
+            - generic [ref=e27]: smoke.js
+          - button [ref=e28]:
+            - img
+      - button "+ New Script" [ref=e8]
+    - generic [ref=e10]:
+      - generic [ref=e39]:
+        - generic [ref=e40]: smoke-test.js
+        - generic [ref=e41]: saved
+        - button "Save" [ref=e42]:
+          - img
+          - text: Save
+        - button "Run" [ref=e43]:
+          - img
+          - text: Run
+      - code [ref=e47]:
+        - generic [ref=e48]:
+          - textbox "Editor content" [ref=e49]
+          - textbox [ref=e50]
+          - generic [ref=e55]: "1"
+          - generic [ref=e61]: "export default function() { console.log(1); }"
+      - generic [ref=e64]:
+        - generic [ref=e66]: Terminal
+        - generic [ref=e68]:
+          - generic [ref=e70]: "[error] spawn k6 ENOENT"
+          - generic [ref=e71]: "[warning] could not save HTML report"
+  - button "Open Next.js Dev Tools" [ref=e34] [cursor=pointer]:
+    - img [ref=e35]
+  - alert [ref=e38]
+  - generic [ref=e69]:
+    - alert
+    - alert

@@ -1,38 +1,38 @@
 services:
-  web-ui:
-    build: ./web-ui
+  app:
+    build: .
     ports:
-      - "127.0.0.1:3000:3000"
-    volumes:
-      - ./tests:/tests
+      - "3000:3000"
+      - "5665:5665"
     environment:
-      - K6_RUNNER_URL=http://k6:8080
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_USE_SSL: "false"
+      K6_DASHBOARD_PORT: "5665"
+      K6_WEB_DASHBOARD_HOST: "0.0.0.0"
+      K6_BIN: "/usr/local/bin/k6"
     depends_on:
-      k6:
+      minio:
         condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
 
-  k6:
-    build: ./k6
-    init: true
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
     ports:
-      - "127.0.0.1:5665:5665"
-    volumes:
-      - ./tests:/tests
+      - "9000:9000"
+      - "9001:9001"
     environment:
-      - K6_TARGET_URL=${K6_TARGET_URL:-http://host.docker.internal:8084/healthz}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  minio_data:
