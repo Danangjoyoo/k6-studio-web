@@ -52,7 +52,10 @@ describe("file explorer row items", () => {
     expect(checkbox).not.toBeChecked();
     expect(control).toHaveAttribute("data-selection-visible", "false");
     expect(control).toHaveClass("w-0");
+    expect(control).toHaveClass("mr-0");
     expect(control).toHaveClass("opacity-0");
+    expect(control).not.toHaveClass("mr-2");
+    expect(control.parentElement).not.toHaveClass("gap-2");
   });
 
   it("selected file row shows the checkbox and exposes aria-selected", () => {
@@ -67,7 +70,9 @@ describe("file explorer row items", () => {
     expect(row).toHaveAttribute("aria-selected", "true");
     expect(control).toHaveAttribute("data-selection-visible", "true");
     expect(control).toHaveClass("w-4");
+    expect(control).toHaveClass("mr-2");
     expect(control).toHaveClass("opacity-100");
+    expect(control.parentElement).not.toHaveClass("gap-2");
   });
 
   it("folder row does not reserve checkbox width while selection control is hidden", () => {
@@ -81,7 +86,26 @@ describe("file explorer row items", () => {
 
     expect(control).toHaveAttribute("data-selection-visible", "false");
     expect(control).toHaveClass("w-0");
+    expect(control).toHaveClass("mr-0");
     expect(control).toHaveClass("opacity-0");
+    expect(control).not.toHaveClass("mr-1.5");
+    expect(control.parentElement).not.toHaveClass("gap-1.5");
+  });
+
+  it("selected folder row shows the checkbox with explicit spacing", () => {
+    renderFolderItem({
+      isSelectionChecked: true,
+      onSelectionChange: jest.fn(),
+    });
+
+    const row = screen.getByTestId("sidebar-folder-item");
+    const control = within(row).getByTestId("row-selection-control");
+
+    expect(control).toHaveAttribute("data-selection-visible", "true");
+    expect(control).toHaveClass("w-4");
+    expect(control).toHaveClass("mr-1.5");
+    expect(control).toHaveClass("opacity-100");
+    expect(control.parentElement).not.toHaveClass("gap-1.5");
   });
 
   it("rows use treeitem semantics for selection and folder expansion", () => {

@@ -159,16 +159,16 @@ export default function FileItem({
           }
         }}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center">
           {onSelectionChange && (
             <span
               data-testid="row-selection-control"
               data-selection-visible={selectionVisible ? "true" : "false"}
               className={cn(
-                "flex h-4 shrink-0 items-center justify-center overflow-hidden transition-[width,opacity]",
+                "flex h-4 shrink-0 items-center justify-center overflow-hidden transition-[width,opacity,margin-right]",
                 selectionVisible
-                  ? "pointer-events-auto w-4 opacity-100"
-                  : "pointer-events-none w-0 opacity-0 group-hover:pointer-events-auto group-hover:w-4 group-hover:opacity-100 group-focus:pointer-events-auto group-focus:w-4 group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:w-4 group-focus-within:opacity-100"
+                  ? "pointer-events-auto mr-2 w-4 opacity-100"
+                  : "pointer-events-none mr-0 w-0 opacity-0 group-hover:pointer-events-auto group-hover:mr-2 group-hover:w-4 group-hover:opacity-100 group-focus:pointer-events-auto group-focus:mr-2 group-focus:w-4 group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:mr-2 group-focus-within:w-4 group-focus-within:opacity-100"
               )}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
@@ -187,7 +187,7 @@ export default function FileItem({
               />
             </span>
           )}
-          <FileCode2 className="h-3.5 w-3.5 shrink-0 text-primary/80" />
+          <FileCode2 className="mr-2 h-3.5 w-3.5 shrink-0 text-primary/80" />
           {editing ? (
             <input
               ref={inputRef}
