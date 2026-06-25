@@ -1,3 +1,5 @@
+import { DEFAULT_NAMESPACE, normalizeNamespace } from "@/lib/namespaces";
+
 /**
  * Global single-run lock for the k6 web dashboard.
  *
@@ -13,6 +15,7 @@
 
 export interface RunStatus {
   running: boolean;
+  namespace: string | null;
   script: string | null;
   startedAt: number | null;
   activeRunners: number;
@@ -20,13 +23,18 @@ export interface RunStatus {
 }
 
 let _running = false;
+let _namespace: string | null = null;
 let _script: string | null = null;
 let _startedAt: number | null = null;
 
 /** Attempt to acquire the lock for `script`. Returns `true` on success. */
-export function tryAcquire(script: string): boolean {
+export function tryAcquire(
+  script: string,
+  namespace: string = DEFAULT_NAMESPACE
+): boolean {
   if (_running) return false;
   _running = true;
+  _namespace = normalizeNamespace(namespace);
   _script = script;
   _startedAt = Date.now();
   return true;
@@ -35,6 +43,7 @@ export function tryAcquire(script: string): boolean {
 /** Release the lock. No-op if already released. */
 export function release(): void {
   _running = false;
+  _namespace = null;
   _script = null;
   _startedAt = null;
 }
@@ -43,6 +52,7 @@ export function release(): void {
 export function getStatus(): RunStatus {
   return {
     running: _running,
+    namespace: _namespace,
     script: _script,
     startedAt: _startedAt,
     activeRunners: _running ? 1 : 0,
@@ -53,6 +63,7 @@ export function getStatus(): RunStatus {
 /** Reset all state (test helper only). */
 export function _reset(): void {
   _running = false;
+  _namespace = null;
   _script = null;
   _startedAt = null;
 }

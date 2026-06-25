@@ -11,18 +11,39 @@ import {
 } from "@/lib/minio";
 import { runK6, waitForPortFree } from "@/lib/k6";
 import { tryAcquire, release, getStatus } from "@/lib/run-lock";
+import {
+  NamespaceError,
+  normalizeNamespace,
+  toNamespacedKey,
+} from "@/lib/namespaces";
 
 export const dynamic = "force-dynamic";
 
 const DASHBOARD_PORT = parseInt(process.env.K6_DASHBOARD_PORT ?? "5665", 10);
 
 export async function POST(request: Request) {
-  const { filename } = (await request.json()) as { filename: string };
+  const { filename, namespace: namespaceInput } = (await request.json()) as {
+    filename: string;
+    namespace?: unknown;
+  };
   if (!filename) {
     return NextResponse.json({ error: "filename required" }, { status: 400 });
   }
 
-  if (!tryAcquire(filename)) {
+  let namespace: string;
+  try {
+    namespace = normalizeNamespace(namespaceInput);
+  } catch (error) {
+    if (error instanceof NamespaceError) {
+      return NextResponse.json(
+        { error: "Invalid namespace" },
+        { status: 400 }
+      );
+    }
+    throw error;
+  }
+
+  if (!tryAcquire(filename, namespace)) {
     return NextResponse.json(
       { error: "A run is already in progress", status: getStatus() },
       { status: 409 }
@@ -31,8 +52,9 @@ export async function POST(request: Request) {
 
   await ensureBuckets();
   const client = getMinioClient();
+  const scriptKey = toNamespacedKey(namespace, filename);
 
-  const objStream = await client.getObject(SCRIPTS_BUCKET, filename);
+  const objStream = await client.getObject(SCRIPTS_BUCKET, scriptKey);
   const chunks: Buffer[] = [];
   await new Promise<void>((resolve, reject) => {
     objStream.on("data", (c: Buffer) => chunks.push(c));
@@ -70,11 +92,12 @@ export async function POST(request: Request) {
         );
 
         const reportName = `${filename}-${Date.now()}.html`;
+        const reportKey = toNamespacedKey(namespace, reportName);
         try {
           await access(reportPath);
           await client.putObject(
             REPORTS_BUCKET,
-            reportName,
+            reportKey,
             createReadStream(reportPath)
           );
         } catch {

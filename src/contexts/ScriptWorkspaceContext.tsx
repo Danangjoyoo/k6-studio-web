@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import type { RunStatus } from "@/lib/run-lock";
+import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 
 export interface ScriptSession {
   lines: string[];
@@ -27,6 +28,7 @@ const EMPTY_SESSION: ScriptSession = {
 };
 
 interface ScriptWorkspaceValue {
+  namespace: string;
   selectedFile: string | null;
   setSelectedFile: (name: string) => void;
   getSession: (filename: string) => ScriptSession;
@@ -35,6 +37,7 @@ interface ScriptWorkspaceValue {
   runEpoch: number;
   // Global (server-authoritative) run state
   globalRunning: boolean;
+  globalRunningNamespace: string | null;
   globalRunningScript: string | null;
   activeRunners: number;
 }
@@ -43,23 +46,27 @@ const ScriptWorkspaceContext = createContext<ScriptWorkspaceValue | null>(null);
 
 function updateSession(
   sessions: Record<string, ScriptSession>,
-  filename: string,
+  key: string,
   patch: Partial<ScriptSession>
 ): Record<string, ScriptSession> {
   return {
     ...sessions,
-    [filename]: { ...(sessions[filename] ?? EMPTY_SESSION), ...patch },
+    [key]: { ...(sessions[key] ?? EMPTY_SESSION), ...patch },
   };
 }
 
 const STATUS_POLL_MS = 1500;
+const sessionKey = (namespace: string, filename: string) =>
+  `${namespace}\0${filename}`;
 
 export function ScriptWorkspaceProvider({
   children,
+  namespace = DEFAULT_NAMESPACE,
   selectedFile,
   onSelectFile,
 }: {
   children: ReactNode;
+  namespace?: string;
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
 }) {
@@ -67,7 +74,12 @@ export function ScriptWorkspaceProvider({
   const [runningScript, setRunningScript] = useState<string | null>(null);
   const [runEpoch, setRunEpoch] = useState(0);
   const [globalRunning, setGlobalRunning] = useState(false);
-  const [globalRunningScript, setGlobalRunningScript] = useState<string | null>(null);
+  const [globalRunningNamespace, setGlobalRunningNamespace] = useState<
+    string | null
+  >(null);
+  const [globalRunningScript, setGlobalRunningScript] = useState<string | null>(
+    null
+  );
   const [activeRunners, setActiveRunners] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -81,6 +93,7 @@ export function ScriptWorkspaceProvider({
           if (!cancelled && res.ok) {
             const status = (await res.json()) as RunStatus;
             setGlobalRunning(status.running);
+            setGlobalRunningNamespace(status.namespace ?? null);
             setGlobalRunningScript(status.script);
             setActiveRunners(status.activeRunners);
           }
@@ -99,11 +112,13 @@ export function ScriptWorkspaceProvider({
   }, []);
 
   const getSession = useCallback(
-    (filename: string) => sessions[filename] ?? EMPTY_SESSION,
-    [sessions]
+    (filename: string) =>
+      sessions[sessionKey(namespace, filename)] ?? EMPTY_SESSION,
+    [namespace, sessions]
   );
 
   const runScript = useCallback(async (filename: string) => {
+    const key = sessionKey(namespace, filename);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -111,7 +126,7 @@ export function ScriptWorkspaceProvider({
     setRunningScript(filename);
     setRunEpoch((e) => e + 1);
     setSessions((s) =>
-      updateSession(s, filename, {
+      updateSession(s, key, {
         lines: [],
         isRunning: true,
         lastExitCode: null,
@@ -123,14 +138,14 @@ export function ScriptWorkspaceProvider({
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename }),
+        body: JSON.stringify({ filename, namespace }),
         signal: controller.signal,
       });
 
       if (res.status === 409) {
         const body = (await res.json()) as { error: string };
         setSessions((s) =>
-          updateSession(s, filename, {
+          updateSession(s, key, {
             isRunning: false,
             lines: [`[blocked] ${body.error ?? "A run is already in progress"}`],
           })
@@ -163,15 +178,15 @@ export function ScriptWorkspaceProvider({
             };
             if (msg.line !== undefined) {
               setSessions((s) => {
-                const current = s[filename] ?? EMPTY_SESSION;
-                return updateSession(s, filename, {
+                const current = s[key] ?? EMPTY_SESSION;
+                return updateSession(s, key, {
                   lines: [...current.lines, msg.line!],
                 });
               });
             }
             if (msg.done) {
               setSessions((s) =>
-                updateSession(s, filename, {
+                updateSession(s, key, {
                   isRunning: false,
                   lastExitCode: msg.exitCode ?? null,
                   lastReportName: msg.reportName ?? null,
@@ -187,20 +202,21 @@ export function ScriptWorkspaceProvider({
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       setSessions((s) =>
-        updateSession(s, filename, {
+        updateSession(s, key, {
           isRunning: false,
           lines: [
-            ...(s[filename]?.lines ?? []),
+            ...(s[key]?.lines ?? []),
             `[error] ${err instanceof Error ? err.message : "run failed"}`,
           ],
         })
       );
       setRunningScript(null);
     }
-  }, []);
+  }, [namespace]);
 
   const value = useMemo(
     () => ({
+      namespace,
       selectedFile,
       setSelectedFile: onSelectFile,
       getSession,
@@ -208,10 +224,23 @@ export function ScriptWorkspaceProvider({
       runningScript,
       runEpoch,
       globalRunning,
+      globalRunningNamespace,
       globalRunningScript,
       activeRunners,
     }),
-    [selectedFile, onSelectFile, getSession, runScript, runningScript, runEpoch, globalRunning, globalRunningScript, activeRunners]
+    [
+      namespace,
+      selectedFile,
+      onSelectFile,
+      getSession,
+      runScript,
+      runningScript,
+      runEpoch,
+      globalRunning,
+      globalRunningNamespace,
+      globalRunningScript,
+      activeRunners,
+    ]
   );
 
   return (

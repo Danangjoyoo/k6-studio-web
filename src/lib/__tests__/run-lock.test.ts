@@ -28,6 +28,7 @@ describe("run-lock", () => {
   it("getStatus reports not running initially", () => {
     const s = getStatus();
     expect(s.running).toBe(false);
+    expect(s.namespace).toBeNull();
     expect(s.script).toBeNull();
     expect(s.startedAt).toBeNull();
     expect(s.activeRunners).toBe(0);
@@ -39,9 +40,19 @@ describe("run-lock", () => {
     tryAcquire("my-script.ts");
     const s = getStatus();
     expect(s.running).toBe(true);
+    expect(s.namespace).toBe("default");
     expect(s.script).toBe("my-script.ts");
     expect(s.activeRunners).toBe(1);
     expect(s.startedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it("tracks the namespace for an active run", () => {
+    expect(tryAcquire("smoke.ts", "team-a")).toBe(true);
+    expect(getStatus()).toMatchObject({
+      running: true,
+      script: "smoke.ts",
+      namespace: "team-a",
+    });
   });
 
   it("getStatus reflects idle after release", () => {
@@ -49,6 +60,7 @@ describe("run-lock", () => {
     release();
     const s = getStatus();
     expect(s.running).toBe(false);
+    expect(s.namespace).toBeNull();
     expect(s.script).toBeNull();
     expect(s.activeRunners).toBe(0);
   });
