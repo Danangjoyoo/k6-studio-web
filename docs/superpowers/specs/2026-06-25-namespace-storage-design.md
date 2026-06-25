@@ -49,14 +49,14 @@ k6-reports/team-a/api/smoke.ts-1790200000000.html
 
 The existing script and report buckets remain separate. `AWS_S3_BUCKET` configures the script bucket name and defaults to `k6-scripts`; the report bucket defaults to `k6-reports` and remains internally named because the user only requested the script bucket env rename.
 
-Namespace markers use `${namespace}/.keep`. File listing strips the namespace prefix and filters root `.keep`, so marker objects never appear as files.
+Namespace markers use `${namespace}/.namespace`. File listing strips the namespace prefix and filters root `.namespace` and `.keep`, so marker objects and empty-folder sentinels never appear as files.
 
 ## API Contracts
 
 Namespace is supplied by query string for path-based routes and JSON body for mutation routes:
 
 - `GET /api/namespaces` returns `{ namespaces: string[], current: string }`.
-- `POST /api/namespaces` accepts `{ name: string }` and creates `${name}/.keep`.
+- `POST /api/namespaces` accepts `{ name: string }` and creates `${name}/.namespace`.
 - `GET /api/files?namespace=team-a` lists only `team-a/` script objects, strips the namespace prefix, and returns the existing `{ files, tree }` shape.
 - `POST /api/files` accepts `{ namespace, name, content }` and stores `${namespace}/${name}`.
 - `GET|PUT|DELETE /api/files/[...path]?namespace=team-a` operates on `${namespace}/${path}`.

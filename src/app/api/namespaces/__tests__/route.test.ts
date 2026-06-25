@@ -29,7 +29,7 @@ describe("/api/namespaces", () => {
 
   it("lists unique namespaces and includes default", async () => {
     mockClient.listObjects.mockImplementation(() =>
-      objectStream(["team-a/api.ts", "team-a/.keep", "team-b/load.ts"])
+      objectStream(["team-a/api.ts", "team-a/.namespace", "team-b/load.ts"])
     );
 
     const response = await GET();
@@ -43,13 +43,19 @@ describe("/api/namespaces", () => {
 
   it("lists only explicitly marked namespaces and default", async () => {
     mockClient.listObjects.mockImplementation(() =>
-      objectStream(["src/a.ts", "folder/.keep", "team-a/.keep", "team-a/script.ts"])
+      objectStream([
+        "src/a.ts",
+        "folder/.keep",
+        "team-a/.namespace",
+        "team-a/script.ts",
+        "team-empty/.namespace",
+      ])
     );
 
     const response = await GET();
 
     await expect(response.json()).resolves.toEqual({
-      namespaces: ["default", "team-a"],
+      namespaces: ["default", "team-a", "team-empty"],
       current: "default",
     });
   });
@@ -65,7 +71,7 @@ describe("/api/namespaces", () => {
     expect(response.status).toBe(201);
     expect(mockClient.putObject).toHaveBeenCalledWith(
       SCRIPTS_BUCKET,
-      "team-a/.keep",
+      "team-a/.namespace",
       expect.any(Buffer),
       0,
       { "Content-Type": "application/octet-stream" }

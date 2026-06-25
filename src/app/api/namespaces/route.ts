@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { ensureBuckets, getMinioClient, SCRIPTS_BUCKET } from "@/lib/minio";
 import {
   DEFAULT_NAMESPACE,
-  NAMESPACE_KEEP_OBJECT,
+  NAMESPACE_MARKER,
+  NAMESPACE_MARKER_OBJECT,
   NamespaceError,
   normalizeNamespace,
 } from "@/lib/namespaces";
@@ -12,8 +13,6 @@ export async function GET() {
   const client = getMinioClient();
   const stream = client.listObjects(SCRIPTS_BUCKET, "", true);
   const namespaces = new Set<string>([DEFAULT_NAMESPACE]);
-  const markerNamespaces = new Set<string>();
-  const contentNamespaces = new Set<string>();
 
   await new Promise<void>((resolve, reject) => {
     stream.on("data", (obj) => {
@@ -21,11 +20,9 @@ export async function GET() {
       const [namespace, ...relativeParts] = obj.name.split("/");
       try {
         const normalized = normalizeNamespace(namespace);
-        if (relativeParts.length === 1 && relativeParts[0] === ".keep") {
-          markerNamespaces.add(normalized);
-          return;
+        if (relativeParts.length === 1 && relativeParts[0] === NAMESPACE_MARKER) {
+          namespaces.add(normalized);
         }
-        contentNamespaces.add(normalized);
       } catch {
         // Ignore objects that do not follow the namespace key convention.
       }
@@ -33,12 +30,6 @@ export async function GET() {
     stream.on("end", resolve);
     stream.on("error", reject);
   });
-
-  for (const namespace of markerNamespaces) {
-    if (contentNamespaces.has(namespace)) {
-      namespaces.add(namespace);
-    }
-  }
 
   return NextResponse.json({
     namespaces: Array.from(namespaces).sort((a, b) => {
@@ -69,7 +60,7 @@ export async function POST(request: Request) {
   const client = getMinioClient();
   await client.putObject(
     SCRIPTS_BUCKET,
-    NAMESPACE_KEEP_OBJECT(namespace),
+    NAMESPACE_MARKER_OBJECT(namespace),
     Buffer.alloc(0),
     0,
     { "Content-Type": "application/octet-stream" }

@@ -1,6 +1,6 @@
 import {
   DEFAULT_NAMESPACE,
-  NAMESPACE_KEEP_OBJECT,
+  NAMESPACE_MARKER_OBJECT,
   getNamespaceFromRequest,
   normalizeNamespace,
   stripNamespacePrefix,
@@ -36,6 +36,6 @@ describe("namespace helpers", () => {
   });
 
   it("uses a namespace marker object", () => {
-    expect(NAMESPACE_KEEP_OBJECT("team-a")).toBe("team-a/.keep");
+    expect(NAMESPACE_MARKER_OBJECT("team-a")).toBe("team-a/.namespace");
   });
 });

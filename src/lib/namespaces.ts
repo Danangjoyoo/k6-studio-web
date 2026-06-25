@@ -1,4 +1,5 @@
 export const DEFAULT_NAMESPACE = "default";
+export const NAMESPACE_MARKER = ".namespace";
 
 const NAMESPACE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 
@@ -57,6 +58,6 @@ export function namespacePrefix(namespaceValue: unknown): string {
   return `${normalizeNamespace(namespaceValue)}/`;
 }
 
-export function NAMESPACE_KEEP_OBJECT(namespaceValue: unknown): string {
-  return `${normalizeNamespace(namespaceValue)}/.keep`;
+export function NAMESPACE_MARKER_OBJECT(namespaceValue: unknown): string {
+  return `${normalizeNamespace(namespaceValue)}/${NAMESPACE_MARKER}`;
 }

@@ -29,7 +29,7 @@ Add tests in `src/lib/__tests__/namespaces.test.ts` covering:
 ```ts
 import {
   DEFAULT_NAMESPACE,
-  NAMESPACE_KEEP_OBJECT,
+  NAMESPACE_MARKER_OBJECT,
   getNamespaceFromRequest,
   normalizeNamespace,
   stripNamespacePrefix,
@@ -65,7 +65,7 @@ describe("namespace helpers", () => {
   });
 
   it("uses a namespace marker object", () => {
-    expect(NAMESPACE_KEEP_OBJECT("team-a")).toBe("team-a/.keep");
+    expect(NAMESPACE_MARKER_OBJECT("team-a")).toBe("team-a/.namespace");
   });
 });
 ```
@@ -133,8 +133,10 @@ export function namespacePrefix(namespaceValue: unknown): string {
   return `${normalizeNamespace(namespaceValue)}/`;
 }
 
-export function NAMESPACE_KEEP_OBJECT(namespaceValue: unknown): string {
-  return `${normalizeNamespace(namespaceValue)}/.keep`;
+export const NAMESPACE_MARKER = ".namespace";
+
+export function NAMESPACE_MARKER_OBJECT(namespaceValue: unknown): string {
+  return `${normalizeNamespace(namespaceValue)}/${NAMESPACE_MARKER}`;
 }
 ```
 
@@ -274,11 +276,11 @@ describe("/api/namespaces", () => {
 
   it("lists unique namespaces and includes default", async () => {
     mockClient.listObjects.mockReturnValue(
-      objectStream(["team-a/api.ts", "team-a/.keep", "team-b/load.ts"])
+      objectStream(["team-a/api.ts", "team-a/.namespace", "team-b/load.ts"])
     );
     const response = await GET();
     await expect(response.json()).resolves.toEqual({
-      namespaces: ["default", "team-a", "team-b"],
+      namespaces: ["default", "team-a"],
       current: "default",
     });
     expect(mockClient.listObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, "", true);
@@ -294,7 +296,7 @@ describe("/api/namespaces", () => {
     expect(response.status).toBe(201);
     expect(mockClient.putObject).toHaveBeenCalledWith(
       SCRIPTS_BUCKET,
-      "team-a/.keep",
+      "team-a/.namespace",
       expect.any(Buffer),
       0,
       { "Content-Type": "application/octet-stream" }
@@ -313,7 +315,7 @@ Expected: FAIL because the route does not exist.
 
 - [ ] **Step 6: Implement namespace API and env files**
 
-Create `src/app/api/namespaces/route.ts` with `GET` and `POST` using `ensureBuckets`, `getMinioClient`, `SCRIPTS_BUCKET`, `normalizeNamespace`, and `NAMESPACE_KEEP_OBJECT`.
+Create `src/app/api/namespaces/route.ts` with `GET` and `POST` using `ensureBuckets`, `getMinioClient`, `SCRIPTS_BUCKET`, `normalizeNamespace`, and `NAMESPACE_MARKER_OBJECT`.
 
 Update `.env.example` to:
 
@@ -396,7 +398,7 @@ const stream = client.listObjects(SCRIPTS_BUCKET, prefix, true);
 const paths: string[] = [];
 // For each obj.name:
 const relative = stripNamespacePrefix(namespace, obj.name);
-if (relative && relative !== ".keep") paths.push(relative);
+if (relative && relative !== ".keep" && relative !== ".namespace") paths.push(relative);
 ```
 
 For path routes, compute:
@@ -440,7 +442,7 @@ List only namespace-prefixed objects, strip them before building move plans, exe
 
 - [ ] **Step 5: Update reports routes**
 
-`GET /api/reports` must accept `Request`, list `REPORTS_BUCKET` with `namespacePrefix(namespace)`, strip the prefix, drop `.keep`, and return relative names.
+`GET /api/reports` must accept `Request`, list `REPORTS_BUCKET` with `namespacePrefix(namespace)`, strip the prefix, drop `.keep` and `.namespace`, and return relative names.
 
 `GET /api/reports/[name]` must accept the request, get namespace from query, decode the route param as Next already provides it, and read `toNamespacedKey(namespace, name)`.
 
