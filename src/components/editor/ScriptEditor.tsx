@@ -30,13 +30,16 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
   ) {
     const [content, setContent] = useState("");
     const contentRef = useRef("");
+    const loadRequestIdRef = useRef(0);
     const editorInstanceRef = useRef<MonacoEditor_.editor.IStandaloneCodeEditor | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
       async function load() {
+        const requestId = ++loadRequestIdRef.current;
         const res = await fetch(fileUrl(filename, namespace));
         const data = (await res.json()) as { name: string; content: string };
+        if (requestId !== loadRequestIdRef.current) return;
         setContent(data.content);
         contentRef.current = data.content;
         onSaveStatusChange?.("saved");

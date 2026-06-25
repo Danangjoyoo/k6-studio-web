@@ -112,6 +112,23 @@ function okJson(json: unknown = {}) {
   };
 }
 
+function deferredJson(json: unknown) {
+  let resolve!: () => void;
+  const released = new Promise<void>((r) => {
+    resolve = r;
+  });
+  return {
+    resolve,
+    response: Promise.resolve({
+      ok: true,
+      json: async () => {
+        await released;
+        return json;
+      },
+    }),
+  };
+}
+
 function moveFetchSequence(
   initialTree: unknown[],
   refreshedTree: unknown[] = initialTree,
@@ -264,6 +281,49 @@ describe("FileExplorer", () => {
       expect(screen.getByText("script.js")).toBeInTheDocument();
     });
     expect(screen.getByRole("tree", { name: "Scripts" })).toBeInTheDocument();
+  });
+
+  it("ignores stale namespace tree responses after switching namespaces", async () => {
+    const namespaceA = deferredJson({
+      files: [],
+      tree: [{ path: "a-only.ts", name: "a-only.ts", type: "file" }],
+    });
+    const namespaceB = deferredJson({
+      files: [],
+      tree: [{ path: "b-only.ts", name: "b-only.ts", type: "file" }],
+    });
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/files?namespace=team-a") return namespaceA.response;
+      if (url === "/api/files?namespace=team-b") return namespaceB.response;
+      throw new Error(`unexpected url: ${url}`);
+    });
+
+    const { rerender } = render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
+    rerender(
+      <FileExplorer
+        namespace="team-b"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
+
+    namespaceB.resolve();
+    expect(await screen.findByText("b-only.ts")).toBeInTheDocument();
+
+    await act(async () => {
+      namespaceA.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("b-only.ts")).toBeInTheDocument();
+    expect(screen.queryByText("a-only.ts")).not.toBeInTheDocument();
   });
 
   it("adds stable test targets to file and folder rows", async () => {

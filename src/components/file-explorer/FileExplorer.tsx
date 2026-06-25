@@ -77,10 +77,13 @@ export default function FileExplorer({
   const [moveStatus, setMoveStatus] = useState<string | null>(null);
   const dragSourceRef = useRef<MoveSelection | null>(null);
   const knownFolderPathsRef = useRef<Set<string>>(new Set());
+  const fetchTreeRequestIdRef = useRef(0);
 
   const fetchTree = useCallback(async () => {
+    const requestId = ++fetchTreeRequestIdRef.current;
     const res = await fetch(`/api/files?${namespaceQuery(namespace)}`);
     const data = (await res.json()) as { tree: FileNode[] };
+    if (requestId !== fetchTreeRequestIdRef.current) return;
     const nextTree = data.tree ?? [];
     const nextFolderPaths = new Set(flattenFolderPaths(nextTree));
     const previousKnownFolderPaths = knownFolderPathsRef.current;

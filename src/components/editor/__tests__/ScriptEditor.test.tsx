@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import ScriptEditor, {
   ScriptEditorHandle,
@@ -53,6 +53,23 @@ global.fetch = jest.fn((url: string, opts?: RequestInit) => {
     json: async () => ({ name: "test.ts" }),
   });
 }) as jest.Mock;
+
+function deferredResponse(content: string) {
+  let resolve!: () => void;
+  const released = new Promise<void>((r) => {
+    resolve = r;
+  });
+  return {
+    resolve,
+    response: Promise.resolve({
+      ok: true,
+      json: async () => {
+        await released;
+        return { name: "test.ts", content };
+      },
+    }),
+  };
+}
 
 describe("ScriptEditor", () => {
   beforeEach(() => {
@@ -115,5 +132,44 @@ describe("ScriptEditor", () => {
     await waitFor(() => {
       expect(capturedLanguage).toBe("typescript");
     });
+  });
+
+  it("ignores stale namespace fetch responses after switching namespaces", async () => {
+    const namespaceA = deferredResponse("// namespace a");
+    const namespaceB = deferredResponse("// namespace b");
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === "/api/files/test.ts?namespace=team-a") {
+        return namespaceA.response;
+      }
+      if (url === "/api/files/test.ts?namespace=team-b") {
+        return namespaceB.response;
+      }
+      return Promise.resolve({ ok: true, json: async () => [] });
+    });
+    const ref = createRef<ScriptEditorHandle>();
+
+    const { getByTestId, rerender } = render(
+      <ScriptEditor namespace="team-a" filename="test.ts" ref={ref} />
+    );
+    rerender(<ScriptEditor namespace="team-b" filename="test.ts" ref={ref} />);
+
+    namespaceB.resolve();
+    await waitFor(() => {
+      expect((getByTestId("monaco") as HTMLTextAreaElement).value).toBe(
+        "// namespace b"
+      );
+      expect(ref.current?.getContent()).toBe("// namespace b");
+    });
+
+    await act(async () => {
+      namespaceA.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect((getByTestId("monaco") as HTMLTextAreaElement).value).toBe(
+      "// namespace b"
+    );
+    expect(ref.current?.getContent()).toBe("// namespace b");
   });
 });

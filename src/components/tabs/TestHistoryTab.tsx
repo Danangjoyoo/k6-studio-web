@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,19 +44,27 @@ export default function TestHistoryTab({
   const [reports, setReports] = useState<ReportInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const fetchReportsRequestIdRef = useRef(0);
 
   const fetchReports = useCallback(async () => {
+    const requestId = ++fetchReportsRequestIdRef.current;
     setLoading(true);
-    const res = await fetch(`/api/reports?${namespaceQuery(namespace)}`);
-    const data = (await res.json()) as { reports: ReportInfo[] };
-    setReports(
-      [...data.reports].sort(
-        (a, b) =>
-          new Date(b.lastModified).getTime() -
-          new Date(a.lastModified).getTime()
-      )
-    );
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/reports?${namespaceQuery(namespace)}`);
+      const data = (await res.json()) as { reports: ReportInfo[] };
+      if (requestId !== fetchReportsRequestIdRef.current) return;
+      setReports(
+        [...data.reports].sort(
+          (a, b) =>
+            new Date(b.lastModified).getTime() -
+            new Date(a.lastModified).getTime()
+        )
+      );
+    } finally {
+      if (requestId === fetchReportsRequestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, [namespace]);
 
   useEffect(() => {
