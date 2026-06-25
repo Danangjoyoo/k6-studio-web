@@ -157,6 +157,15 @@ export default function FileExplorer({
       body: JSON.stringify({ from: oldPath, to: newPath, type: "folder" }),
     });
     await fetchTree();
+    const oldFolder = normalizeFolderPath(oldPath);
+    const newFolder = normalizeFolderPath(newPath);
+    const oldPrefix = `${oldFolder}/`;
+    if (selectedFile?.startsWith(oldPrefix)) {
+      onFileRenamed?.(
+        selectedFile,
+        joinPath(newFolder, selectedFile.slice(oldPrefix.length))
+      );
+    }
   }
 
   function handleSelectionChange(

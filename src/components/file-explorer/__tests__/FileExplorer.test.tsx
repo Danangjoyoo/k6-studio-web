@@ -574,7 +574,8 @@ describe("FileExplorer", () => {
     expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
   });
 
-  it("renames a folder through the rename API and refreshes the tree", async () => {
+  it("renames a folder through the rename API, refreshes, and reports selected descendant path update", async () => {
+    const onFileRenamed = jest.fn();
     mockFetchSequence(
       { json: { files: [], tree: scriptsTree() } },
       { json: {} },
@@ -596,7 +597,13 @@ describe("FileExplorer", () => {
       }
     );
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        selectedFile="src/a.ts"
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
 
     const folderRow = await screen.findByText("src").then(() =>
       screen
@@ -625,6 +632,9 @@ describe("FileExplorer", () => {
       type: "folder",
     });
     expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
+    await waitFor(() => {
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "source/a.ts");
+    });
   });
 
   it("opens one folder-scoped script dialog and creates the script under that folder", async () => {
@@ -680,6 +690,62 @@ describe("FileExplorer", () => {
         })
       );
     });
+  });
+
+  it("opens one folder-scoped folder dialog and creates the folder under that folder", async () => {
+    mockFetchSequence(
+      {
+        json: {
+          files: [],
+          tree: [
+            { path: "auth/", name: "auth", type: "folder", children: [] },
+          ],
+        },
+      },
+      { json: { path: "auth/nested" } },
+      {
+        json: {
+          files: [],
+          tree: [
+            {
+              path: "auth/",
+              name: "auth",
+              type: "folder",
+              children: [
+                { path: "auth/nested/", name: "nested", type: "folder", children: [] },
+              ],
+            },
+          ],
+        },
+      }
+    );
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const folderRow = await screen.findByTestId("sidebar-folder-item");
+    fireEvent.click(
+      within(folderRow).getByRole("button", { name: "New folder here" })
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "New folder in auth/" })
+    ).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByPlaceholderText("folder-name"), {
+      target: { value: "nested" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/folder",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ path: "auth/nested" }),
+        })
+      );
+    });
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
   });
 
   it("normalizes folder delete requests through the folder API", async () => {
