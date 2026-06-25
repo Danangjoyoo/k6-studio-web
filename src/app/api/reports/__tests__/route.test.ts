@@ -1,0 +1,63 @@
+import { EventEmitter } from "events";
+import { GET } from "@/app/api/reports/route";
+import { REPORTS_BUCKET } from "@/lib/minio";
+
+const mockEnsureBuckets = jest.fn();
+const mockClient = {
+  listObjects: jest.fn(),
+};
+
+jest.mock("@/lib/minio", () => ({
+  getMinioClient: () => mockClient,
+  REPORTS_BUCKET: "k6-reports",
+  ensureBuckets: () => mockEnsureBuckets(),
+}));
+
+function objectStream(
+  objects: Array<{ name: string; size?: number; lastModified?: Date }>
+) {
+  const stream = new EventEmitter();
+  queueMicrotask(() => {
+    for (const object of objects) stream.emit("data", object);
+    stream.emit("end");
+  });
+  return stream;
+}
+
+beforeEach(() => {
+  mockEnsureBuckets.mockReset();
+  mockClient.listObjects.mockReset();
+});
+
+describe("GET /api/reports", () => {
+  it("lists nested report objects recursively", async () => {
+    const lastModified = new Date("2026-06-25T00:00:00.000Z");
+    mockClient.listObjects.mockImplementation(() =>
+      objectStream([
+        {
+          name: "dest/a.ts-111.html",
+          size: 42,
+          lastModified,
+        },
+      ])
+    );
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    expect(mockClient.listObjects).toHaveBeenCalledWith(
+      REPORTS_BUCKET,
+      "",
+      true
+    );
+    await expect(response.json()).resolves.toEqual({
+      reports: [
+        {
+          name: "dest/a.ts-111.html",
+          size: 42,
+          lastModified: "2026-06-25T00:00:00.000Z",
+        },
+      ],
+    });
+  });
+});

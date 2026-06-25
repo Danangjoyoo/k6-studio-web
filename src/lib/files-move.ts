@@ -271,11 +271,16 @@ function buildReportMoves(
   const reportDestinations = new Set<string>();
 
   for (const scriptMove of scriptFilePathMoves) {
-    const oldPrefix = `${scriptMove.from}-`;
     for (const reportKey of reportKeys) {
-      if (!reportKey.startsWith(oldPrefix)) continue;
+      const reportSuffix = reportKey.slice(scriptMove.from.length);
+      if (
+        !reportKey.startsWith(scriptMove.from) ||
+        !/^-\d+\.html$/.test(reportSuffix)
+      ) {
+        continue;
+      }
 
-      const destination = `${scriptMove.to}${reportKey.slice(scriptMove.from.length)}`;
+      const destination = `${scriptMove.to}${reportSuffix}`;
       if (reportKeySet.has(destination)) {
         throw new MoveConflictError(
           `Destination report already exists: ${destination}`,

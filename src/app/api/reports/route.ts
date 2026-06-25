@@ -4,7 +4,7 @@ import { getMinioClient, REPORTS_BUCKET, ensureBuckets } from "@/lib/minio";
 export async function GET() {
   await ensureBuckets();
   const client = getMinioClient();
-  const stream = client.listObjects(REPORTS_BUCKET, "", false);
+  const stream = client.listObjects(REPORTS_BUCKET, "", true);
   const reports: { name: string; size: number; lastModified: string }[] = [];
 
   await new Promise<void>((resolve, reject) => {

@@ -214,6 +214,38 @@ describe("POST /api/files/move", () => {
     ]);
   });
 
+  it("does not move reports for scripts that only share a path prefix", async () => {
+    mockObjects(["src/a.ts", "src/a.ts-extra"], [
+      "src/a.ts-111.html",
+      "src/a.ts-extra-111.html",
+    ]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "src/a.ts", type: "file" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      moved: { scripts: 1, reports: 1 },
+    });
+    expect(mockClient.copyObject).toHaveBeenCalledWith(
+      REPORTS_BUCKET,
+      "dest/a.ts-111.html",
+      `/${REPORTS_BUCKET}/src/a.ts-111.html`
+    );
+    expect(mockClient.copyObject).not.toHaveBeenCalledWith(
+      REPORTS_BUCKET,
+      "dest/a.ts-extra-111.html",
+      `/${REPORTS_BUCKET}/src/a.ts-extra-111.html`
+    );
+    expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
+      "src/a.ts-111.html",
+    ]);
+  });
+
   it("rejects report destination conflicts before mutating", async () => {
     mockObjects(
       ["src/a.ts"],
