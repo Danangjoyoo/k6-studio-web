@@ -1,82 +1,60 @@
-# Task 6 Report: Editor Tab Assembly
+# Task 6 Report: Explorer Move E2E Coverage
 
-**Status:** Complete  
-**Branch:** feat/k6-studio-web  
-**Commit:** b1713e9  
-**Base commit:** 1fce96d (Task 5)
+**Status:** Complete
+**Branch:** feat/k6-studio-web
+**Implementation commit:** 90a76b3
+**Base commit:** d8e505c
 
 ## Summary
 
-Wired `ScriptEditor`, `Terminal`, and a Run/Save toolbar into `EditorTab`. Run auto-saves via `editorRef.save()` then calls `useK6Runner().run(filename)`. Save button and Cmd/Ctrl+S (via ScriptEditor) update save-status indicator.
+Added Playwright coverage for the file explorer move workflows:
 
-## Files Created
+- dragging a script into a folder
+- rejecting duplicate destination moves while preserving source and destination
+- preserving and opening moved report history
+- preventing movement of the currently running script
+
+The E2E drag helper now waits for the real `POST /api/files/move` response and asserts the submitted payload. The history test selects the moved report, verifies `/api/reports/...` returns `200`, and checks iframe content from the deterministic fixture.
+
+## Files Changed
 
 | File | Purpose |
 |------|---------|
-| `k6-studio-web/src/components/tabs/EditorTab.tsx` | Editor tab layout: toolbar, Monaco editor, terminal |
-| `k6-studio-web/src/components/tabs/__tests__/EditorTab.test.tsx` | Placeholder + editor/terminal render tests |
+| `e2e/k6-studio.spec.ts` | Added explorer move workflow E2E tests and move/report helpers |
 
-## TDD Steps Followed
+## Focused Playwright Verification
 
-1. Wrote failing tests → confirmed `Could not locate module @/components/tabs/EditorTab`
-2. Implemented `EditorTab.tsx` per brief
-3. EditorTab tests PASS (2/2)
-4. Smoke-tested via temporary `page.tsx` + FileExplorer (reverted before commit)
-5. Committed EditorTab files only
+Implementation worker verification:
 
-## Test Results
-
-### Unit Tests
-
-```
-Test Suites: 5 passed, 5 total
-Tests:       6 passed, 6 total
+```bash
+PLAYWRIGHT_BASE_URL=http://localhost:3100 npx playwright test e2e/k6-studio.spec.ts --project=chromium -g "drag moves|duplicate move|history remains|running script cannot"
 ```
 
-- `EditorTab.test.tsx` — placeholder when `filename=null`; editor + terminal when file selected
-- `ScriptEditor.test.tsx` — regression (Task 4)
-- `FileExplorer.test.tsx` — regression (Task 3)
-- `k6.test.ts` — regression (Task 5)
-- `minio.test.ts` — regression (Task 2)
+Result: PASS, `4 passed`.
 
-### Browser Smoke Test
+Independent quality-review verification:
 
-MinIO via `docker compose up minio -d`; dev server on port 3004 (3000 occupied). **k6 not in PATH** — run streams ENOENT error as in Task 5.
-
-| Step | Expected | Actual |
-|------|----------|--------|
-| No file selected | "Select a file to edit" placeholder | PASS |
-| Select `smoke-test.js` | Editor + toolbar + terminal | PASS |
-| Save status after load | `saved` | PASS |
-| Click Run | Auto-save, terminal streams, Run disabled while running | PASS (ENOENT lines in terminal) |
-| Click Save | Status shows `saved` | PASS |
-| Delete selected file (smoke page only) | Parent clears stale `selected` via polling | PASS (smoke test page only; not committed) |
-
-`page.tsx` restored to Next.js default before commit.
-
-## Interfaces Delivered
-
-```ts
-export interface EditorTabProps {
-  filename: string | null;
-}
-
-export default function EditorTab({ filename }: EditorTabProps): JSX.Element;
+```bash
+PLAYWRIGHT_BASE_URL=http://localhost:3101 npx playwright test e2e/k6-studio.spec.ts --grep "drag moves|duplicate move|history remains|running script cannot"
 ```
 
-## Concerns / Notes
+Result: PASS, `4/4`.
 
-1. **k6 not installed locally** — Run button works end-to-end but k6 spawn fails with ENOENT until Task 10 Docker image or `K6_BIN` override.
-2. **Stale selection not handled in EditorTab** — When `filename` points to a deleted file, ScriptEditor fetch may fail silently; Task 9 shell should clear `selectedFile` on delete (smoke test used parent polling only).
-3. **No run error UI** — Failed runs show lines in terminal only; no toast or banner for fetch/SSE errors (inherited from Task 5 hook).
-4. **Save status resets on file switch** — `saveStatus` state is component-level; switching files does not reset until ScriptEditor `onSaveStatusChange` fires on load.
+Both runs targeted a freshly started app server from the current checkout. Existing port `3000` appeared stale during verification, so the focused runs used fresh dev servers on `3100` and `3101`.
 
-## Next Task Dependencies
+## Additional Verification
 
-Task 9 can consume:
-
-```tsx
-import EditorTab from "@/components/tabs/EditorTab";
-
-<EditorTab filename={selectedFile} />
+```bash
+npx tsc --noEmit
+npm run lint
+npx jest --runInBand
+git diff --check
 ```
+
+Result: PASS.
+
+## Notes
+
+- The history E2E uses a deterministic report fixture because live k6 report export emitted a report-save warning in this environment during earlier checks. This keeps the test focused on move/history accessibility while avoiding unrelated k6 export instability.
+- Direct MinIO report fixture seeding is guarded to local app URLs, or explicit `PLAYWRIGHT_ALLOW_DIRECT_MINIO_FIXTURES=true`, to avoid accidentally seeding a different MinIO instance from a remote Playwright target.
+- Browser drag uses `locator.dragTo(...)` first and falls back to real mouse movement if Chromium does not emit the move request. The helper still requires the real `/api/files/move` response and asserts the request payload.
