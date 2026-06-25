@@ -68,6 +68,31 @@ describe("file explorer row items", () => {
     expect(control).toHaveClass("opacity-100");
   });
 
+  it("rows use treeitem semantics for selection and folder expansion", () => {
+    renderFileItem({
+      isSelectionChecked: true,
+      onSelectionChange: jest.fn(),
+    });
+    renderFolderItem({
+      defaultOpen: true,
+      isSelectionChecked: true,
+      onSelectionChange: jest.fn(),
+    });
+
+    const fileRow = screen.getByTestId("sidebar-file-item");
+    const folderRow = screen.getByTestId("sidebar-folder-item");
+
+    expect(fileRow).toHaveAttribute("role", "treeitem");
+    expect(fileRow).toHaveAttribute("aria-selected", "true");
+    expect(folderRow).toHaveAttribute("role", "treeitem");
+    expect(folderRow).toHaveAttribute("aria-selected", "true");
+    expect(folderRow).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(folderRow);
+
+    expect(folderRow).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("file row checkbox toggles callback and does not select the file", () => {
     const onClick = jest.fn();
     const onSelectionChange = jest.fn();

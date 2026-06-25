@@ -120,7 +120,7 @@ export default function FileItem({
   return (
     <TooltipProvider>
       <div
-        role="button"
+        role="treeitem"
         data-testid="sidebar-file-item"
         data-path={path}
         data-selected={isSelected || isSelectionChecked ? "true" : undefined}

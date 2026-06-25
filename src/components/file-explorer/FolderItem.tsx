@@ -152,12 +152,13 @@ export default function FolderItem({
     <TooltipProvider>
       <div>
         <div
-          role="button"
+          role="treeitem"
           data-testid="sidebar-folder-item"
           data-path={path}
           data-selected={isSelectionChecked ? "true" : undefined}
           data-drop-active={isDropActive ? "true" : undefined}
           aria-selected={isSelectionChecked ? true : undefined}
+          aria-expanded={open}
           draggable={isDragEnabled && !isDragDisabled}
           tabIndex={0}
           style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
