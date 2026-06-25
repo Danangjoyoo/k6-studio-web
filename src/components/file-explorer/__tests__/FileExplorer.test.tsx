@@ -73,6 +73,21 @@ function nestedScriptsTree() {
   ];
 }
 
+function activeRunTree() {
+  return [
+    {
+      path: "suite/",
+      name: "suite",
+      type: "folder",
+      children: [
+        { path: "suite/run.ts", name: "run.ts", type: "file" },
+      ],
+    },
+    { path: "other.ts", name: "other.ts", type: "file" },
+    { path: "dest/", name: "dest", type: "folder", children: [] },
+  ];
+}
+
 function okJson(json: unknown = {}) {
   return {
     ok: true,
@@ -499,6 +514,54 @@ describe("FileExplorer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(runningRow);
     expect(onSelectFile).toHaveBeenCalledWith("src/a.ts");
+  });
+
+  it("disables move controls for the running script and containing folder while unrelated files remain movable", async () => {
+    const onSelectFile = jest.fn();
+    mockFilesTree(activeRunTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={onSelectFile}
+        globalRunningScript="suite/run.ts"
+      />
+    );
+
+    const suiteCheckbox = await screen.findByRole("checkbox", {
+      name: "Select suite",
+    });
+    const runCheckbox = screen.getByRole("checkbox", {
+      name: "Select run.ts",
+    });
+    const otherCheckbox = screen.getByRole("checkbox", {
+      name: "Select other.ts",
+    });
+    const suiteRow = screen
+      .getAllByTestId("sidebar-folder-item")
+      .find((item) => item.getAttribute("data-path") === "suite/");
+    const runRow = screen
+      .getAllByTestId("sidebar-file-item")
+      .find((item) => item.getAttribute("data-path") === "suite/run.ts");
+    const otherRow = screen
+      .getAllByTestId("sidebar-file-item")
+      .find((item) => item.getAttribute("data-path") === "other.ts");
+    if (!suiteRow || !runRow || !otherRow) {
+      throw new Error("expected active run tree rows");
+    }
+
+    expect(suiteCheckbox).toBeDisabled();
+    expect(runCheckbox).toBeDisabled();
+    expect(otherCheckbox).not.toBeDisabled();
+    expect(suiteRow).toHaveAttribute("draggable", "false");
+    expect(runRow).toHaveAttribute("draggable", "false");
+    expect(otherRow).toHaveAttribute("draggable", "true");
+
+    fireEvent.dragStart(suiteRow);
+    fireEvent.dragStart(runRow);
+    expect(moveApiCalls()).toHaveLength(0);
+    fireEvent.click(runRow);
+    expect(onSelectFile).toHaveBeenCalledWith("suite/run.ts");
   });
 
   it("does not move when dragging the running script onto a valid folder target", async () => {
