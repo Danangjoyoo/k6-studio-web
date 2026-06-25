@@ -60,7 +60,7 @@ Keyboard behavior:
 
 ## Visual Design
 
-The checkbox column keeps its current compact width. When hidden, it uses opacity and pointer-event changes rather than layout removal, so row text does not shift on hover or selection changes.
+The checkbox is fully hidden by default and does not reserve horizontal space. When hover, focus, selected state, or selection-active mode reveals it, the control expands to the current compact checkbox width. The row icons and names should align as if no checkbox exists until the control appears.
 
 Selected rows continue using the existing selected row styling. A row can be both the active editor file and selected for move; the visual state should remain clear by using existing `data-selected` styling without adding a new palette.
 
@@ -69,6 +69,7 @@ Selected rows continue using the existing selected row styling. A row can be bot
 Component or integration coverage:
 
 - Default rows do not visibly show checkboxes.
+- Default rows do not reserve checkbox width before the checkbox appears.
 - Hovered, focused, and selected rows show their checkbox.
 - `Cmd/Ctrl+click` toggles file and folder move selection without opening/toggling the row.
 - `Shift+click` selects a visible range and skips disabled running-script rows.

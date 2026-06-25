@@ -817,7 +817,118 @@ git commit -m "test: update active run explorer selection e2e"
 
 ---
 
-### Task 4: Verification And Cleanup
+### Task 4: Zero-Width Hidden Selection Controls
+
+**Files:**
+- Modify: `src/components/file-explorer/FileItem.tsx`
+- Modify: `src/components/file-explorer/FolderItem.tsx`
+- Test: `src/components/file-explorer/__tests__/RowItems.test.tsx`
+- Test: `e2e/k6-studio.spec.ts`
+
+- [ ] **Step 1: Write failing row layout tests**
+
+In `src/components/file-explorer/__tests__/RowItems.test.tsx`, update the hidden-control expectations to assert zero-width layout:
+
+```tsx
+expect(control).toHaveAttribute("data-selection-visible", "false");
+expect(control).toHaveClass("w-0");
+expect(control).toHaveClass("opacity-0");
+```
+
+Update visible-control expectations to assert the existing width appears only when visible:
+
+```tsx
+expect(control).toHaveAttribute("data-selection-visible", "true");
+expect(control).toHaveClass("w-4");
+expect(control).toHaveClass("opacity-100");
+```
+
+Add folder coverage:
+
+```tsx
+it("folder row does not reserve checkbox width while selection control is hidden", () => {
+  renderFolderItem({
+    isSelectionChecked: false,
+    onSelectionChange: jest.fn(),
+  });
+
+  const row = screen.getByTestId("sidebar-folder-item");
+  const control = within(row).getByTestId("row-selection-control");
+
+  expect(control).toHaveAttribute("data-selection-visible", "false");
+  expect(control).toHaveClass("w-0");
+  expect(control).toHaveClass("opacity-0");
+});
+```
+
+- [ ] **Step 2: Run row tests and confirm failure**
+
+Run:
+
+```bash
+npx jest src/components/file-explorer/__tests__/RowItems.test.tsx --runInBand
+```
+
+Expected: FAIL because hidden controls still reserve `w-4`.
+
+- [ ] **Step 3: Collapse hidden checkbox wrappers to zero width**
+
+In both `FileItem.tsx` and `FolderItem.tsx`, change the `row-selection-control` class logic from always reserving `w-4` to reserving width only when visible:
+
+```tsx
+className={cn(
+  "flex h-4 shrink-0 items-center justify-center overflow-hidden transition-[width,opacity]",
+  selectionVisible
+    ? "pointer-events-auto w-4 opacity-100"
+    : "pointer-events-none w-0 opacity-0 group-hover:pointer-events-auto group-hover:w-4 group-hover:opacity-100 group-focus:pointer-events-auto group-focus:w-4 group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:w-4 group-focus-within:opacity-100"
+)}
+```
+
+Keep the checkbox input mounted and unchanged. Do not change selection state, drag/drop, or move behavior.
+
+- [ ] **Step 4: Update E2E opacity assertion to cover zero-width hidden state**
+
+In `e2e/k6-studio.spec.ts`, extend the active-run progressive control assertion:
+
+```ts
+await expect(runningMoveControl).toHaveCSS("opacity", "0");
+await expect(runningMoveControl).toHaveCSS("width", "0px");
+await fileRow(page, script).hover();
+...
+await expect(runningMoveControl).toHaveCSS("opacity", "1");
+await expect(runningMoveControl).not.toHaveCSS("width", "0px");
+```
+
+- [ ] **Step 5: Run focused tests**
+
+Run:
+
+```bash
+npx jest src/components/file-explorer/__tests__/RowItems.test.tsx --runInBand
+```
+
+Expected: PASS.
+
+If the app is running, run:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://localhost:3000 npx playwright test e2e/k6-studio.spec.ts --project=chromium -g "running script cannot be moved"
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+Run:
+
+```bash
+git add src/components/file-explorer/FileItem.tsx src/components/file-explorer/FolderItem.tsx src/components/file-explorer/__tests__/RowItems.test.tsx e2e/k6-studio.spec.ts
+git commit -m "fix: collapse hidden explorer selection controls"
+```
+
+---
+
+### Task 5: Verification And Cleanup
 
 **Files:**
 - Verify all modified files.
