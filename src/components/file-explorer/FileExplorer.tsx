@@ -201,11 +201,14 @@ export default function FileExplorer({
     item: MoveSelection,
     checked: boolean
   ) {
+    if (isMovementDisabled(item, globalRunningScript)) return;
+    const key = selectionKey(item);
     setMoveStatus(null);
+    setLastSelectionKey(key);
     setSelection((current) => {
       const next = { ...current };
-      if (checked) next[selectionKey(item)] = item;
-      else delete next[selectionKey(item)];
+      if (checked) next[key] = item;
+      else delete next[key];
       return next;
     });
   }
@@ -524,7 +527,9 @@ export default function FileExplorer({
               className="py-8"
             />
           ) : (
-            renderTree(filteredTree)
+            <div role="tree" aria-label="Scripts">
+              {renderTree(filteredTree)}
+            </div>
           )}
         </div>
       </ScrollArea>
