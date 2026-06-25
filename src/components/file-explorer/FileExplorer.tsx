@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FileCode2 } from "lucide-react";
+import { FileCode2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import EmptyState from "@/components/layout/EmptyState";
 import PanelHeader from "@/components/layout/PanelHeader";
@@ -47,6 +48,7 @@ export default function FileExplorer({
   const [scriptDialogParent, setScriptDialogParent] = useState<string | null>(null);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderDialogParent, setFolderDialogParent] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const fetchTree = useCallback(async () => {
     const res = await fetch("/api/files");
@@ -176,8 +178,10 @@ export default function FileExplorer({
     });
   }
 
+  const filteredTree = filterTree(tree, query);
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Top toolbar with create buttons */}
       <PanelHeader
         label="Scripts"
@@ -208,7 +212,24 @@ export default function FileExplorer({
         }
       />
 
-      <ScrollArea className="flex-1 px-1 py-1">
+      <div className="shrink-0 border-b border-sidebar-border bg-sidebar px-2 py-2">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            role="searchbox"
+            aria-label="Search scripts"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search scripts"
+            className="h-7 w-full rounded-md bg-panel pl-7 pr-2 font-mono text-xs"
+          />
+        </label>
+      </div>
+
+      <ScrollArea
+        data-testid="file-explorer-scroll"
+        className="min-h-0 flex-1 px-1 py-1"
+      >
         {tree.length === 0 ? (
           <EmptyState
             icon={FileCode2}
@@ -216,8 +237,15 @@ export default function FileExplorer({
             description="Create a script to start a load test."
             className="py-8"
           />
+        ) : filteredTree.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title="No matches"
+            description="Try another search."
+            className="py-8"
+          />
         ) : (
-          renderTree(tree)
+          renderTree(filteredTree)
         )}
       </ScrollArea>
     </div>
@@ -239,4 +267,29 @@ function countFiles(nodes: FileNode[]): number {
     else if (node.children) count += countFiles(node.children);
   }
   return count;
+}
+
+function filterTree(nodes: FileNode[], query: string): FileNode[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return nodes;
+
+  const result: FileNode[] = [];
+  for (const node of nodes) {
+    const selfMatches =
+      node.name.toLowerCase().includes(normalized) ||
+      node.path.toLowerCase().includes(normalized);
+
+    if (node.type === "folder") {
+      const children = filterTree(node.children ?? [], query);
+      if (selfMatches || children.length > 0) {
+        result.push({
+          ...node,
+          children: selfMatches ? node.children : children,
+        });
+      }
+    } else if (selfMatches) {
+      result.push(node);
+    }
+  }
+  return result;
 }

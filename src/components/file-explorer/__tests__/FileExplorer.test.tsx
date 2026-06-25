@@ -187,4 +187,55 @@ describe("FileExplorer", () => {
       });
     });
   });
+
+  it("renders a search box under the create toolbar", async () => {
+    mockFilesTree([
+      { path: "script.js", name: "script.js", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    expect(
+      await screen.findByRole("searchbox", { name: /search scripts/i })
+    ).toBeInTheDocument();
+  });
+
+  it("filters files by name and keeps matching folder ancestors", async () => {
+    mockFilesTree([
+      {
+        path: "auth/",
+        name: "auth",
+        type: "folder",
+        children: [
+          { path: "auth/login.ts", name: "login.ts", type: "file" },
+          { path: "auth/logout.ts", name: "logout.ts", type: "file" },
+        ],
+      },
+      { path: "checkout.ts", name: "checkout.ts", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    fireEvent.change(
+      await screen.findByRole("searchbox", { name: /search scripts/i }),
+      { target: { value: "login" } }
+    );
+
+    expect(screen.getByText("auth")).toBeInTheDocument();
+    expect(screen.getByText("login.ts")).toBeInTheDocument();
+    expect(screen.queryByText("logout.ts")).not.toBeInTheDocument();
+    expect(screen.queryByText("checkout.ts")).not.toBeInTheDocument();
+  });
+
+  it("uses a constrained scroll region for long file trees", async () => {
+    mockFilesTree([
+      { path: "script.js", name: "script.js", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    expect(await screen.findByTestId("file-explorer-scroll")).toHaveClass(
+      "min-h-0"
+    );
+  });
 });
