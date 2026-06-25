@@ -174,6 +174,13 @@ test.describe("k6 Studio E2E", () => {
     await expect(page.locator("iframe[title='k6 Live Dashboard']")).toBeVisible({
       timeout: 35000,
     });
+    const dashboardFrame = page.frameLocator("iframe[title='k6 Live Dashboard']");
+    await expect(dashboardFrame.getByText("Iteration Rate")).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(dashboardFrame.getByText("Loading...")).toHaveCount(0, {
+      timeout: 30000,
+    });
     await waitForRunner(page, 0, 60000);
   });
 
