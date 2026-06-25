@@ -72,16 +72,18 @@ export default function FolderItem({
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
-  const open = isOpen ?? uncontrolledOpen;
+  const isControlledOpen = isOpen !== undefined;
+  const open = isControlledOpen ? isOpen : uncontrolledOpen;
   const selectionVisible =
     Boolean(showSelectionControl) || Boolean(isSelectionChecked);
 
   function toggleOpen() {
-    if (onToggleOpen) {
-      onToggleOpen();
+    if (isControlledOpen) {
+      onToggleOpen?.();
       return;
     }
     setUncontrolledOpen((value) => !value);
+    onToggleOpen?.();
   }
 
   function handleRowClick(event: React.MouseEvent<HTMLDivElement>) {

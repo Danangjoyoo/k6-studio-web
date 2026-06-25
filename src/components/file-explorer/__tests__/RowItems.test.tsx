@@ -144,6 +144,20 @@ describe("file explorer row items", () => {
     expect(screen.getByText("child content")).toBeInTheDocument();
   });
 
+  it("uncontrolled folder rows with onToggleOpen still update internal visibility", () => {
+    const onToggleOpen = jest.fn();
+    renderFolderItem({
+      defaultOpen: true,
+      onToggleOpen,
+    });
+
+    const folderRow = screen.getByTestId("sidebar-folder-item");
+    fireEvent.click(folderRow);
+
+    expect(onToggleOpen).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("child content")).not.toBeInTheDocument();
+  });
+
   it("file row can be dragged and calls drag start and end callbacks with the path", () => {
     const onRowDragStart = jest.fn();
     const onRowDragEnd = jest.fn();
