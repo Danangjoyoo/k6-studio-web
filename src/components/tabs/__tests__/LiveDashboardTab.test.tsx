@@ -5,6 +5,14 @@ import "@testing-library/jest-dom";
 import { act, render, screen } from "@testing-library/react";
 import LiveDashboardTab from "@/components/tabs/LiveDashboardTab";
 
+async function advanceRetryTimer(ms: number) {
+  await act(async () => {
+    jest.advanceTimersByTime(ms);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe("LiveDashboardTab", () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -34,6 +42,8 @@ describe("LiveDashboardTab", () => {
   });
 
   it("renders the iframe immediately for the active selected run", () => {
+    global.fetch = jest.fn(() => new Promise(() => undefined)) as jest.Mock;
+
     render(
       <LiveDashboardTab
         scriptName="smoke.js"
@@ -45,7 +55,6 @@ describe("LiveDashboardTab", () => {
     const iframe = screen.getByTitle("k6 Live Dashboard");
     expect(iframe).toBeInTheDocument();
     expect(iframe.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
-    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("does not render the iframe when the selected script is not actively running", () => {
@@ -61,7 +70,8 @@ describe("LiveDashboardTab", () => {
     expect(screen.getByText(/dashboard only available during a run/i)).toBeInTheDocument();
   });
 
-  it("retries the iframe while the run remains active", () => {
+  it("retries the iframe while the dashboard is unavailable", async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
     render(
       <LiveDashboardTab
         scriptName="smoke.js"
@@ -72,13 +82,27 @@ describe("LiveDashboardTab", () => {
 
     const first = screen.getByTitle("k6 Live Dashboard");
 
-    act(() => {
-      jest.advanceTimersByTime(2000);
-    });
+    await advanceRetryTimer(2000);
 
     const second = screen.getByTitle("k6 Live Dashboard");
     expect(second).toBeInTheDocument();
     expect(second).not.toBe(first);
     expect(second.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
+  });
+
+  it("keeps the same iframe after the dashboard is reachable", async () => {
+    render(
+      <LiveDashboardTab
+        scriptName="smoke.js"
+        isActiveRun={true}
+        runEpoch={1}
+      />
+    );
+
+    const first = screen.getByTitle("k6 Live Dashboard");
+
+    await advanceRetryTimer(6000);
+
+    expect(screen.getByTitle("k6 Live Dashboard")).toBe(first);
   });
 });
