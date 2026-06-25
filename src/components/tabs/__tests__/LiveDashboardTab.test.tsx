@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import LiveDashboardTab from "@/components/tabs/LiveDashboardTab";
 
 describe("LiveDashboardTab", () => {
@@ -33,7 +33,7 @@ describe("LiveDashboardTab", () => {
     expect(screen.getByText(/dashboard only available during a run/i)).toBeInTheDocument();
   });
 
-  it("polls and renders iframe when active run and dashboard is up", async () => {
+  it("renders the iframe immediately for the active selected run", () => {
     render(
       <LiveDashboardTab
         scriptName="smoke.js"
@@ -42,11 +42,43 @@ describe("LiveDashboardTab", () => {
       />
     );
 
-    await waitFor(() => {
-      const iframe = screen.getByTitle("k6 Live Dashboard");
-      expect(iframe).toBeInTheDocument();
-      expect(iframe.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
+    const iframe = screen.getByTitle("k6 Live Dashboard");
+    expect(iframe).toBeInTheDocument();
+    expect(iframe.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not render the iframe when the selected script is not actively running", () => {
+    render(
+      <LiveDashboardTab
+        scriptName="other.js"
+        isActiveRun={false}
+        runEpoch={1}
+      />
+    );
+
+    expect(screen.queryByTitle("k6 Live Dashboard")).not.toBeInTheDocument();
+    expect(screen.getByText(/dashboard only available during a run/i)).toBeInTheDocument();
+  });
+
+  it("retries the iframe while the run remains active", () => {
+    render(
+      <LiveDashboardTab
+        scriptName="smoke.js"
+        isActiveRun={true}
+        runEpoch={1}
+      />
+    );
+
+    const first = screen.getByTitle("k6 Live Dashboard");
+
+    act(() => {
+      jest.advanceTimersByTime(2000);
     });
-    expect(global.fetch).toHaveBeenCalledWith("/api/dashboard/ui/");
+
+    const second = screen.getByTitle("k6 Live Dashboard");
+    expect(second).toBeInTheDocument();
+    expect(second).not.toBe(first);
+    expect(second.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
   });
 });
