@@ -147,15 +147,19 @@ function moveFetchSequence(
 function lastFetchBody() {
   const moveCall = fetchMock.mock.calls.find(([url]) => url === "/api/files/move");
   if (!moveCall) throw new Error("move API was not called");
-  const { namespace: _namespace, ...body } = JSON.parse(moveCall[1].body as string);
-  return body;
+  return withoutNamespace(JSON.parse(moveCall[1].body as string));
 }
 
 function lastJsonBody(url: string) {
   const call = fetchMock.mock.calls.find(([calledUrl]) => calledUrl === url);
   if (!call) throw new Error(`${url} was not called`);
-  const { namespace: _namespace, ...body } = JSON.parse(call[1].body as string);
-  return body;
+  return withoutNamespace(JSON.parse(call[1].body as string));
+}
+
+function withoutNamespace(body: Record<string, unknown>) {
+  const next = { ...body };
+  delete next.namespace;
+  return next;
 }
 
 function rawJsonBody(url: string) {
