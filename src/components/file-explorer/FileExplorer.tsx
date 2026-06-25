@@ -73,19 +73,26 @@ export default function FileExplorer({
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [moveStatus, setMoveStatus] = useState<string | null>(null);
   const dragSourceRef = useRef<MoveSelection | null>(null);
+  const knownFolderPathsRef = useRef<Set<string>>(new Set());
 
   const fetchTree = useCallback(async () => {
     const res = await fetch("/api/files");
     const data = (await res.json()) as { tree: FileNode[] };
     const nextTree = data.tree ?? [];
+    const nextFolderPaths = new Set(flattenFolderPaths(nextTree));
+    const previousKnownFolderPaths = knownFolderPathsRef.current;
     setTree(nextTree);
     setExpandedFolders((current) => {
-      const next = new Set(current);
-      for (const folderPath of flattenFolderPaths(nextTree)) {
-        next.add(folderPath);
+      const next = new Set<string>();
+      for (const folderPath of current) {
+        if (nextFolderPaths.has(folderPath)) next.add(folderPath);
+      }
+      for (const folderPath of nextFolderPaths) {
+        if (!previousKnownFolderPaths.has(folderPath)) next.add(folderPath);
       }
       return next;
     });
+    knownFolderPathsRef.current = nextFolderPaths;
     const validKeys = new Set(flattenSelectionKeys(nextTree));
     setSelection((current) =>
       Object.fromEntries(

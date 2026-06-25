@@ -290,9 +290,35 @@ describe("FileExplorer", () => {
     render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
 
     const fileRow = await rowByPath("src/a.ts");
+    fileRow.focus();
+    expect(fileRow).toHaveFocus();
+
     fireEvent.keyDown(fileRow, { key: " ", code: "Space" });
 
     expect(within(fileRow).getByRole("checkbox", { name: "Select a.ts" })).toBeChecked();
+  });
+
+  it("keeps collapsed folders collapsed after a successful move refresh", async () => {
+    moveFetchSequence(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const srcRow = await rowByPath("src/");
+    fireEvent.click(srcRow);
+
+    expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
+
+    await dragRowToFolder("other/c.ts", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
+    });
   });
 
   it("shift-click range skips running-script rows", async () => {
