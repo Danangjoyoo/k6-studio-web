@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import EmptyState from "@/components/layout/EmptyState";
 import PanelHeader from "@/components/layout/PanelHeader";
 import { cn } from "@/lib/utils";
+import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 
 interface ReportInfo {
   name: string;
@@ -15,6 +16,7 @@ interface ReportInfo {
 }
 
 export interface TestHistoryTabProps {
+  namespace?: string;
   scriptName: string | null;
 }
 
@@ -35,14 +37,17 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function TestHistoryTab({ scriptName }: TestHistoryTabProps) {
+export default function TestHistoryTab({
+  namespace = DEFAULT_NAMESPACE,
+  scriptName,
+}: TestHistoryTabProps) {
   const [reports, setReports] = useState<ReportInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/reports");
+    const res = await fetch(`/api/reports?${namespaceQuery(namespace)}`);
     const data = (await res.json()) as { reports: ReportInfo[] };
     setReports(
       [...data.reports].sort(
@@ -52,7 +57,7 @@ export default function TestHistoryTab({ scriptName }: TestHistoryTabProps) {
       )
     );
     setLoading(false);
-  }, []);
+  }, [namespace]);
 
   useEffect(() => {
     void fetchReports();
@@ -67,7 +72,7 @@ export default function TestHistoryTab({ scriptName }: TestHistoryTabProps) {
     setSelected((current) =>
       current && filteredReports.some((r) => r.name === current) ? current : null
     );
-  }, [filteredReports, scriptName]);
+  }, [filteredReports, namespace, scriptName]);
 
   if (!scriptName) {
     return (
@@ -157,7 +162,7 @@ export default function TestHistoryTab({ scriptName }: TestHistoryTabProps) {
         {selected ? (
           <iframe
             key={selected}
-            src={`/api/reports/${encodeURIComponent(selected)}`}
+            src={`/api/reports/${encodeURIComponent(selected)}?${namespaceQuery(namespace)}`}
             className="h-full w-full rounded-md border border-border bg-white ring-1 ring-border"
             title={selected}
             sandbox="allow-scripts allow-same-origin"
@@ -172,4 +177,8 @@ export default function TestHistoryTab({ scriptName }: TestHistoryTabProps) {
       </div>
     </div>
   );
+}
+
+function namespaceQuery(namespace: string): string {
+  return `namespace=${encodeURIComponent(namespace)}`;
 }

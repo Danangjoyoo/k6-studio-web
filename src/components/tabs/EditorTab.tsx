@@ -108,6 +108,7 @@ export default function EditorTab({ filename }: EditorTabProps) {
         <ResizablePanel defaultSize={70} minSize={20} className="overflow-hidden">
           <ScriptEditor
             ref={editorRef}
+            namespace={namespace}
             filename={filename}
             onSaveStatusChange={setSaveStatus}
           />

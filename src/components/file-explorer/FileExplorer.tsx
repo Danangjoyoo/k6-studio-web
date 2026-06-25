@@ -11,8 +11,10 @@ import FolderItem from "./FolderItem";
 import NewFileDialog from "./NewFileDialog";
 import NewFolderDialog from "./NewFolderDialog";
 import type { FileNode } from "@/lib/files-tree";
+import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 
 export interface FileExplorerProps {
+  namespace?: string;
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
   onFileDeleted?: (name: string) => void;
@@ -55,6 +57,7 @@ export default () => {
 `;
 
 export default function FileExplorer({
+  namespace = DEFAULT_NAMESPACE,
   selectedFile,
   onSelectFile,
   onFileDeleted,
@@ -76,7 +79,7 @@ export default function FileExplorer({
   const knownFolderPathsRef = useRef<Set<string>>(new Set());
 
   const fetchTree = useCallback(async () => {
-    const res = await fetch("/api/files");
+    const res = await fetch(`/api/files?${namespaceQuery(namespace)}`);
     const data = (await res.json()) as { tree: FileNode[] };
     const nextTree = data.tree ?? [];
     const nextFolderPaths = new Set(flattenFolderPaths(nextTree));
@@ -99,11 +102,22 @@ export default function FileExplorer({
         Object.entries(current).filter(([key]) => validKeys.has(key))
       )
     );
-  }, []);
+  }, [namespace]);
 
   useEffect(() => {
     void fetchTree();
   }, [fetchTree]);
+
+  useEffect(() => {
+    setTree([]);
+    setSelection({});
+    setExpandedFolders(new Set());
+    setLastSelectionKey(null);
+    setDropTarget(null);
+    setMoveStatus(null);
+    dragSourceRef.current = null;
+    knownFolderPathsRef.current = new Set();
+  }, [namespace]);
 
   function openScriptDialog(parentPath: string | null) {
     setScriptDialogParent(parentPath);
@@ -132,7 +146,7 @@ export default function FileExplorer({
     await fetch("/api/files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: fullName, content: DEFAULT_SCRIPT }),
+      body: JSON.stringify({ namespace, name: fullName, content: DEFAULT_SCRIPT }),
     });
     await fetchTree();
     onSelectFile(fullName);
@@ -143,14 +157,16 @@ export default function FileExplorer({
     await fetch("/api/files/folder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ namespace, path }),
     });
     await fetchTree();
     handleFolderDialogOpenChange(false);
   }
 
   async function handleDeleteFile(path: string) {
-    await fetch(`/api/files/${encodeApiPath(path)}`, { method: "DELETE" });
+    await fetch(`/api/files/${encodeApiPath(path)}?${namespaceQuery(namespace)}`, {
+      method: "DELETE",
+    });
     await fetchTree();
     onFileDeleted?.(path);
   }
@@ -160,7 +176,7 @@ export default function FileExplorer({
     await fetch("/api/files/folder", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: folderPath }),
+      body: JSON.stringify({ namespace, path: folderPath }),
     });
     await fetchTree();
   }
@@ -169,7 +185,7 @@ export default function FileExplorer({
     const response = await fetch("/api/files/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: oldPath, to: newPath, type: "file" }),
+      body: JSON.stringify({ namespace, from: oldPath, to: newPath, type: "file" }),
     });
     if (!response.ok) {
       setMoveStatus(await readErrorMessage(response, "Rename failed"));
@@ -184,7 +200,7 @@ export default function FileExplorer({
     const response = await fetch("/api/files/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: oldPath, to: newPath, type: "folder" }),
+      body: JSON.stringify({ namespace, from: oldPath, to: newPath, type: "folder" }),
     });
     if (!response.ok) {
       setMoveStatus(await readErrorMessage(response, "Rename failed"));
@@ -313,7 +329,7 @@ export default function FileExplorer({
     const response = await fetch("/api/files/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items, targetFolder }),
+      body: JSON.stringify({ namespace, items, targetFolder }),
     });
 
     if (!response.ok) {
@@ -700,6 +716,10 @@ function encodeApiPath(path: string): string {
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+function namespaceQuery(namespace: string): string {
+  return `namespace=${encodeURIComponent(namespace)}`;
 }
 
 function countFiles(nodes: FileNode[]): number {

@@ -1,6 +1,9 @@
 import { cn } from "@/lib/utils";
+import NamespaceSelector from "@/components/layout/NamespaceSelector";
 
 interface AppHeaderProps {
+  namespace: string;
+  onNamespaceChange: (namespace: string) => void;
   activeRunners?: number;
   runningScript?: string | null;
 }
@@ -35,6 +38,8 @@ function K6Logo({ className }: { className?: string }) {
 }
 
 export default function AppHeader({
+  namespace,
+  onNamespaceChange,
   activeRunners = 0,
   runningScript = null,
 }: AppHeaderProps) {
@@ -55,6 +60,11 @@ export default function AppHeader({
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        <NamespaceSelector
+          namespace={namespace}
+          onNamespaceChange={onNamespaceChange}
+        />
+
         {/* Active runner counter — always visible so users understand capacity */}
         <div
           data-testid="active-runner-status"

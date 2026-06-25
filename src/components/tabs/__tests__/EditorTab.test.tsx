@@ -4,6 +4,7 @@
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import EditorTab from "@/components/tabs/EditorTab";
+import ScriptEditor from "@/components/editor/ScriptEditor";
 
 const mockWorkspace = {
   namespace: "team-a",
@@ -70,6 +71,13 @@ describe("EditorTab", () => {
     render(<EditorTab filename="script.js" />);
     expect(screen.getByTestId("editor")).toBeInTheDocument();
     expect(screen.getByTestId("terminal")).toBeInTheDocument();
+    expect(ScriptEditor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: "team-a",
+        filename: "script.js",
+      }),
+      undefined
+    );
   });
 
   it("renders resize handle between editor and terminal", () => {

@@ -8,6 +8,7 @@ import FileExplorer from "@/components/file-explorer/FileExplorer";
 global.fetch = jest.fn() as jest.Mock;
 
 const fetchMock = global.fetch as jest.Mock;
+const defaultFilesUrl = "/api/files?namespace=default";
 
 function mockFilesTree(tree: unknown[]) {
   fetchMock.mockResolvedValue({
@@ -129,11 +130,21 @@ function moveFetchSequence(
 function lastFetchBody() {
   const moveCall = fetchMock.mock.calls.find(([url]) => url === "/api/files/move");
   if (!moveCall) throw new Error("move API was not called");
-  return JSON.parse(moveCall[1].body as string);
+  const { namespace: _namespace, ...body } = JSON.parse(moveCall[1].body as string);
+  return body;
 }
 
 function lastJsonBody(url: string) {
   const call = fetchMock.mock.calls.find(([calledUrl]) => calledUrl === url);
+  if (!call) throw new Error(`${url} was not called`);
+  const { namespace: _namespace, ...body } = JSON.parse(call[1].body as string);
+  return body;
+}
+
+function rawJsonBody(url: string) {
+  const call = fetchMock.mock.calls.find(
+    ([calledUrl, init]) => calledUrl === url && init?.body
+  );
   if (!call) throw new Error(`${url} was not called`);
   return JSON.parse(call[1].body as string);
 }
@@ -219,12 +230,35 @@ beforeEach(() => {
 });
 
 describe("FileExplorer", () => {
+  it("fetches the initial tree for the selected namespace", async () => {
+    mockFilesTree([
+      { path: "script.js", name: "script.js", type: "file" },
+    ]);
+
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
+
+    await screen.findByText("script.js");
+    expect(fetchMock).toHaveBeenCalledWith("/api/files?namespace=team-a");
+  });
+
   it("renders file list from API", async () => {
     mockFilesTree([
       { path: "script.js", name: "script.js", type: "file" },
     ]);
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     await waitFor(() => {
       expect(screen.getByText("script.js")).toBeInTheDocument();
@@ -244,7 +278,13 @@ describe("FileExplorer", () => {
       },
     ]);
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     await screen.findByText("auth");
 
@@ -281,7 +321,13 @@ describe("FileExplorer", () => {
   it("shift-click selects a visible range and drag posts selected files", async () => {
     moveFetchSequence(scriptsTree());
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     const first = await rowByPath("src/a.ts");
     const second = await rowByPath("src/b.ts");
@@ -295,13 +341,50 @@ describe("FileExplorer", () => {
         expect.objectContaining({ method: "POST" })
       );
     });
-    expect(lastFetchBody()).toEqual({
+    expect(rawJsonBody("/api/files/move")).toEqual({
+      namespace: "team-a",
       items: [
         { path: "src/a.ts", type: "file" },
         { path: "src/b.ts", type: "file" },
       ],
       targetFolder: "dest",
     });
+  });
+
+  it("resets selection, expanded folders, move status, and tree when namespace changes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson({ files: [], tree: scriptsTree() }))
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "Move failed" }),
+      })
+      .mockResolvedValueOnce(okJson({ files: [], tree: [] }));
+
+    const { rerender } = render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
+
+    await ctrlClickRow("src/a.ts");
+    await dragRowToFolder("src/a.ts", "dest/");
+    expect(await screen.findByRole("status")).toHaveTextContent("Move failed");
+
+    rerender(
+      <FileExplorer
+        namespace="team-b"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/files?namespace=team-b");
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Select a.ts" })).not.toBeInTheDocument();
   });
 
   it("checkbox selection anchors shift-click range selection", async () => {
@@ -633,6 +716,7 @@ describe("FileExplorer", () => {
 
     render(
       <FileExplorer
+        namespace="team-a"
         selectedFile="src/a.ts"
         onSelectFile={jest.fn()}
         onFileRenamed={onFileRenamed}
@@ -670,7 +754,13 @@ describe("FileExplorer", () => {
       },
     ]);
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     await selectCheckbox("Select c.ts");
     await dragRowToFolder("src/a.ts", "dest/");
@@ -691,6 +781,7 @@ describe("FileExplorer", () => {
 
     render(
       <FileExplorer
+        namespace="team-a"
         selectedFile="src/a.ts"
         onSelectFile={jest.fn()}
         onFileRenamed={onFileRenamed}
@@ -859,6 +950,7 @@ describe("FileExplorer", () => {
 
     render(
       <FileExplorer
+        namespace="team-a"
         selectedFile="src/a.ts"
         onSelectFile={jest.fn()}
         onFileRenamed={onFileRenamed}
@@ -894,7 +986,7 @@ describe("FileExplorer", () => {
     await waitFor(() => {
       expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "src/renamed.ts", "file");
     });
-    expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/files?namespace=team-a");
   });
 
   it("does not refresh or report path updates when file rename fails", async () => {
@@ -931,7 +1023,7 @@ describe("FileExplorer", () => {
       await screen.findByRole("status")
     ).toHaveTextContent("Destination already exists: src/renamed.ts");
     expect(onFileRenamed).not.toHaveBeenCalled();
-    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/files")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === defaultFilesUrl)).toHaveLength(1);
   });
 
   it("renames a folder through the rename API, refreshes, and reports the folder path operation", async () => {
@@ -991,7 +1083,7 @@ describe("FileExplorer", () => {
       to: "source",
       type: "folder",
     });
-    expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
+    expect(fetchMock.mock.calls[2][0]).toBe(defaultFilesUrl);
     await waitFor(() => {
       expect(onFileRenamed).toHaveBeenCalledWith("src", "source", "folder");
     });
@@ -1031,7 +1123,7 @@ describe("FileExplorer", () => {
       await screen.findByRole("status")
     ).toHaveTextContent("Cannot rename folder while script is running");
     expect(onFileRenamed).not.toHaveBeenCalled();
-    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/files")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === defaultFilesUrl)).toHaveLength(1);
   });
 
   it("opens one folder-scoped script dialog and creates the script under that folder", async () => {
@@ -1062,7 +1154,13 @@ describe("FileExplorer", () => {
       }
     );
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     const folderRow = await screen.findByTestId("sidebar-folder-item");
     fireEvent.click(
@@ -1083,9 +1181,12 @@ describe("FileExplorer", () => {
         "/api/files",
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining('"name":"auth/login.ts"'),
         })
       );
+    });
+    expect(rawJsonBody("/api/files")).toMatchObject({
+      namespace: "team-a",
+      name: "auth/login.ts",
     });
   });
 
@@ -1117,7 +1218,13 @@ describe("FileExplorer", () => {
       }
     );
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     const folderRow = await screen.findByTestId("sidebar-folder-item");
     fireEvent.click(
@@ -1138,11 +1245,14 @@ describe("FileExplorer", () => {
         "/api/files/folder",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ path: "auth/nested" }),
         })
       );
     });
-    expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
+    expect(rawJsonBody("/api/files/folder")).toEqual({
+      namespace: "team-a",
+      path: "auth/nested",
+    });
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/files?namespace=team-a");
   });
 
   it("normalizes folder delete requests through the folder API", async () => {
@@ -1159,7 +1269,13 @@ describe("FileExplorer", () => {
       { json: { files: [], tree: [] } }
     );
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team-a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     const folderRow = await screen.findByTestId("sidebar-folder-item");
     fireEvent.click(
@@ -1172,7 +1288,7 @@ describe("FileExplorer", () => {
         expect.objectContaining({
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: "auth#v1" }),
+          body: JSON.stringify({ namespace: "team-a", path: "auth#v1" }),
         })
       );
     });
@@ -1192,7 +1308,13 @@ describe("FileExplorer", () => {
       { json: { files: [], tree: [] } }
     );
 
-    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+    render(
+      <FileExplorer
+        namespace="team a"
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
 
     const fileRow = await screen.findByTestId("sidebar-file-item");
     fireEvent.click(
@@ -1200,9 +1322,10 @@ describe("FileExplorer", () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/files/script%20%231.ts", {
-        method: "DELETE",
-      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/script%20%231.ts?namespace=team%20a",
+        { method: "DELETE" }
+      );
     });
   });
 

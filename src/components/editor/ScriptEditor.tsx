@@ -10,6 +10,7 @@ import {
 import MonacoEditor from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type * as MonacoEditor_ from "monaco-editor";
+import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 
 export interface ScriptEditorHandle {
   save: () => Promise<void>;
@@ -18,11 +19,15 @@ export interface ScriptEditorHandle {
 
 export interface ScriptEditorProps {
   filename: string;
+  namespace?: string;
   onSaveStatusChange?: (status: "saved" | "saving" | "unsaved") => void;
 }
 
 const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
-  function ScriptEditor({ filename, onSaveStatusChange }, ref) {
+  function ScriptEditor(
+    { filename, namespace = DEFAULT_NAMESPACE, onSaveStatusChange },
+    ref
+  ) {
     const [content, setContent] = useState("");
     const contentRef = useRef("");
     const editorInstanceRef = useRef<MonacoEditor_.editor.IStandaloneCodeEditor | null>(null);
@@ -30,14 +35,14 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 
     useEffect(() => {
       async function load() {
-        const res = await fetch(`/api/files/${filename}`);
+        const res = await fetch(fileUrl(filename, namespace));
         const data = (await res.json()) as { name: string; content: string };
         setContent(data.content);
         contentRef.current = data.content;
         onSaveStatusChange?.("saved");
       }
       void load();
-    }, [filename, onSaveStatusChange]);
+    }, [filename, namespace, onSaveStatusChange]);
 
     // Trigger Monaco layout() when the container is resized (e.g. panel drag)
     useEffect(() => {
@@ -59,7 +64,7 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 
     async function save() {
       onSaveStatusChange?.("saving");
-      await fetch(`/api/files/${filename}`, {
+      await fetch(fileUrl(filename, namespace), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: contentRef.current }),
@@ -144,3 +149,15 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 );
 
 export default ScriptEditor;
+
+function fileUrl(filename: string, namespace: string): string {
+  return `/api/files/${encodeApiPath(filename)}?namespace=${encodeURIComponent(namespace)}`;
+}
+
+function encodeApiPath(path: string): string {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}

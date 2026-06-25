@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, Code2, History } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -17,6 +17,7 @@ import FileExplorer from "@/components/file-explorer/FileExplorer";
 import EditorTab from "@/components/tabs/EditorTab";
 import LiveDashboardTab from "@/components/tabs/LiveDashboardTab";
 import TestHistoryTab from "@/components/tabs/TestHistoryTab";
+import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 import { cn } from "@/lib/utils";
 
 type PathOperationType = "file" | "folder";
@@ -24,11 +25,13 @@ type PathOperationType = "file" | "folder";
 function WorkspaceContent({
   selectedFile,
   onSelectFile,
+  onSelectNamespace,
   onFileDeleted,
   onFileRenamed,
 }: {
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
+  onSelectNamespace: (namespace: string) => void;
   onFileDeleted: (name: string) => void;
   onFileRenamed: (
     oldPath: string,
@@ -36,11 +39,33 @@ function WorkspaceContent({
     type?: PathOperationType
   ) => void;
 }) {
-  const { runEpoch, globalRunning, globalRunningScript } = useScriptWorkspace();
+  const {
+    namespace,
+    runEpoch,
+    globalRunning,
+    globalRunningNamespace,
+    globalRunningScript,
+  } = useScriptWorkspace();
+  const runningScriptForNamespace =
+    globalRunningNamespace === namespace ? globalRunningScript : null;
+  const activeDashboard =
+    globalRunning &&
+    globalRunningNamespace === namespace &&
+    globalRunningScript === selectedFile &&
+    selectedFile !== null;
+  const runningScriptLabel =
+    globalRunning && globalRunningNamespace && globalRunningScript
+      ? `${globalRunningNamespace}/${globalRunningScript}`
+      : null;
 
   return (
     <>
-      <AppHeader activeRunners={globalRunning ? 1 : 0} runningScript={globalRunningScript} />
+      <AppHeader
+        namespace={namespace}
+        onNamespaceChange={onSelectNamespace}
+        activeRunners={globalRunning ? 1 : 0}
+        runningScript={runningScriptLabel}
+      />
 
       <ResizablePanelGroup
         direction="horizontal"
@@ -54,11 +79,12 @@ function WorkspaceContent({
           className="overflow-hidden border-r border-sidebar-border bg-sidebar"
         >
           <FileExplorer
+            namespace={namespace}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
             onFileDeleted={onFileDeleted}
             onFileRenamed={onFileRenamed}
-            globalRunningScript={globalRunningScript}
+            globalRunningScript={runningScriptForNamespace}
           />
         </ResizablePanel>
 
@@ -120,9 +146,7 @@ function WorkspaceContent({
               >
                 <LiveDashboardTab
                   scriptName={selectedFile}
-                  isActiveRun={
-                    globalRunning && globalRunningScript === selectedFile && selectedFile !== null
-                  }
+                  isActiveRun={activeDashboard}
                   runEpoch={runEpoch}
                 />
               </TabsContent>
@@ -131,7 +155,7 @@ function WorkspaceContent({
                 value="test-history"
                 className="mt-0 h-full min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
               >
-                <TestHistoryTab scriptName={selectedFile} />
+                <TestHistoryTab namespace={namespace} scriptName={selectedFile} />
               </TabsContent>
             </Tabs>
           </main>
@@ -143,6 +167,26 @@ function WorkspaceContent({
 
 export default function AppShell() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedNamespace, setSelectedNamespace] = useState(DEFAULT_NAMESPACE);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("k6-studio-namespace");
+    if (stored) {
+      setSelectedNamespace(stored);
+    }
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    window.localStorage.setItem("k6-studio-namespace", selectedNamespace);
+  }, [hasMounted, selectedNamespace]);
+
+  const handleNamespaceChange = useCallback((namespace: string) => {
+    setSelectedNamespace(namespace);
+    setSelectedFile(null);
+  }, []);
 
   function handleFileDeleted(name: string) {
     setSelectedFile((current) => (current === name ? null : current));
@@ -161,12 +205,14 @@ export default function AppShell() {
   return (
     <div className="grid h-screen grid-rows-[auto_1fr] overflow-hidden bg-background">
       <ScriptWorkspaceProvider
+        namespace={selectedNamespace}
         selectedFile={selectedFile}
         onSelectFile={setSelectedFile}
       >
         <WorkspaceContent
           selectedFile={selectedFile}
           onSelectFile={setSelectedFile}
+          onSelectNamespace={handleNamespaceChange}
           onFileDeleted={handleFileDeleted}
           onFileRenamed={handleFileRenamed}
         />

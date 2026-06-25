@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import ScriptEditor, {
   ScriptEditorHandle,
@@ -55,6 +55,10 @@ global.fetch = jest.fn((url: string, opts?: RequestInit) => {
 }) as jest.Mock;
 
 describe("ScriptEditor", () => {
+  beforeEach(() => {
+    (global.fetch as jest.Mock).mockClear();
+  });
+
   it("loads content from API on mount", async () => {
     const ref = createRef<ScriptEditorHandle>();
     const { getByTestId } = render(
@@ -65,6 +69,45 @@ describe("ScriptEditor", () => {
         "// hello"
       );
     });
+  });
+
+  it("loads nested special-character paths with namespace query encoding", async () => {
+    render(<ScriptEditor namespace="team-a" filename="folder/script #1.ts" />);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/files/folder/script%20%231.ts?namespace=team-a"
+      );
+    });
+  });
+
+  it("saves content to the namespaced encoded file URL", async () => {
+    const ref = createRef<ScriptEditorHandle>();
+    const { getByTestId } = render(
+      <ScriptEditor
+        namespace="team-a"
+        filename="folder/script #1.ts"
+        ref={ref}
+      />
+    );
+    await waitFor(() => {
+      expect((getByTestId("monaco") as HTMLTextAreaElement).value).toBe(
+        "// hello"
+      );
+    });
+
+    fireEvent.change(getByTestId("monaco"), {
+      target: { value: "// changed" },
+    });
+    await ref.current?.save();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/files/folder/script%20%231.ts?namespace=team-a",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ content: "// changed" }),
+      })
+    );
   });
 
   it("uses typescript language mode", async () => {
