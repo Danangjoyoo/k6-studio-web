@@ -37,6 +37,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: "from, to, and type are required" },
+      { status: 400 }
+    );
+  }
+
   if (
     typeof body.from !== "string" ||
     !body.from ||

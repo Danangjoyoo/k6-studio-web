@@ -142,6 +142,9 @@ export function buildRenamePlan(input: BuildRenamePlanInput): MovePlan {
     input.type === "folder"
       ? normalizeFolderPath(input.to)
       : normalizeObjectPath(input.to, "to");
+  if (input.type === "folder" && (!from || !to)) {
+    throw new MoveConflictError("Folder rename paths must not be empty", 400);
+  }
   const scriptKeys = input.existingScriptObjectKeys.map(normalizeObjectKey);
   const reportKeys = input.existingReportObjectKeys.map(normalizeObjectKey);
   const scriptKeySet = new Set(scriptKeys);

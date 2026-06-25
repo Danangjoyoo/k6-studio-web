@@ -70,6 +70,17 @@ beforeEach(() => {
 });
 
 describe("POST /api/files/rename", () => {
+  it("rejects non-object JSON bodies with 400 and no mutation", async () => {
+    const response = await POST(jsonRequest(null));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "from, to, and type are required",
+    });
+    expect(mockClient.listObjects).not.toHaveBeenCalled();
+    expectNoMutation();
+  });
+
   it("renames a single file and returns success", async () => {
     mockObjects(["src/a.ts"]);
 
@@ -341,6 +352,24 @@ describe("POST /api/files/rename", () => {
     expect(mockClient.removeObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, [
       "empty/.keep",
     ]);
+  });
+
+  it("rejects folder rename to an empty normalized path", async () => {
+    mockObjects(["empty/.keep"]);
+
+    const response = await POST(
+      jsonRequest({
+        from: "empty",
+        to: "/",
+        type: "folder",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Folder rename paths must not be empty",
+    });
+    expectNoMutation();
   });
 
   it("rejects malformed input with 400", async () => {
