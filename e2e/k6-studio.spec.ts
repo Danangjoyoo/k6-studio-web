@@ -1,4 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  type Response,
+} from "@playwright/test";
 import { Readable } from "stream";
 import {
   ensureBuckets,
@@ -100,10 +107,26 @@ async function createScriptViaApiWithContent(
   await expect(fileRow(page, name)).toBeVisible({ timeout: 8000 });
 }
 
-async function createReportFixture(reportName: string) {
+async function createReportFixture(page: Page, reportName: string) {
+  const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? page.url();
+  const hostname = new URL(baseURL).hostname;
+  const isLocalApp =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1";
+  if (
+    !isLocalApp &&
+    process.env.PLAYWRIGHT_ALLOW_DIRECT_MINIO_FIXTURES !== "true"
+  ) {
+    throw new Error(
+      "Deterministic report fixtures seed MinIO directly and require a local app URL, " +
+        "or PLAYWRIGHT_ALLOW_DIRECT_MINIO_FIXTURES=true when app/MinIO env alignment is guaranteed."
+    );
+  }
+
   await ensureBuckets();
   const client = getMinioClient();
-  const html = `<!doctype html><html><body><h1>${reportName}</h1></body></html>`;
+  const html = `<!doctype html><html><body><h1>deterministic-report-fixture</h1><p>${reportName}</p></body></html>`;
   await client.putObject(
     REPORTS_BUCKET,
     reportName,
@@ -118,20 +141,123 @@ async function createFolder(page: Page, name: string) {
   await expect(folderRow(page, `${name}/`)).toBeVisible({ timeout: 5000 });
 }
 
-async function dispatchDragTo(
-  source: ReturnType<typeof fileRow>,
-  target: ReturnType<typeof folderRow>
+async function dragFileToFolderAndWait(
+  page: Page,
+  filePath: string,
+  folderPath: string,
+  expectedOk = true
 ) {
-  const dataTransfer = await source.page().evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent("dragstart", { dataTransfer });
-  await target.dispatchEvent("dragover", { dataTransfer });
-  await target.dispatchEvent("drop", { dataTransfer });
-  await source.dispatchEvent("dragend", { dataTransfer });
-  await dataTransfer.dispose();
+  const source = fileRow(page, filePath);
+  const target = folderRow(page, `${folderPath}/`);
+  await expect(source).toBeVisible();
+  await expect(target).toBeVisible();
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+
+  let response: Response;
+  try {
+    response = await waitForMoveResponseDuring(
+      page,
+      () =>
+        source.dragTo(target, {
+          force: true,
+          sourcePosition: { x: 2, y: 10 },
+          targetPosition: { x: 2, y: 10 },
+        }),
+      3000
+    );
+  } catch {
+    response = await waitForMoveResponseDuring(
+      page,
+      () => dragWithMouse(page, source, target),
+      10000
+    );
+  }
+
+  expect(response.request().postDataJSON()).toEqual({
+    items: [{ path: filePath, type: "file" }],
+    targetFolder: folderPath,
+  });
+  expect(response.ok()).toBe(expectedOk);
+  return response;
 }
 
-async function dragFileToFolder(page: Page, filePath: string, folderPath: string) {
-  await dispatchDragTo(fileRow(page, filePath), folderRow(page, `${folderPath}/`));
+async function waitForMoveResponseDuring(
+  page: Page,
+  action: () => Promise<void>,
+  timeout: number
+): Promise<Response> {
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/files/move" &&
+      response.request().method() === "POST",
+    { timeout }
+  );
+  await action();
+  return responsePromise;
+}
+
+async function dragWithMouse(page: Page, source: Locator, target: Locator) {
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) {
+    throw new Error("Cannot drag because source or target row is not visible");
+  }
+
+  const start = {
+    x: sourceBox.x + Math.min(40, sourceBox.width - 2),
+    y: sourceBox.y + Math.min(10, sourceBox.height / 2),
+  };
+  const end = {
+    x: targetBox.x + Math.min(40, targetBox.width - 2),
+    y: targetBox.y + Math.min(10, targetBox.height / 2),
+  };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 12, start.y + 12, { steps: 4 });
+  await page.mouse.move(end.x, end.y, { steps: 12 });
+  await page.mouse.up();
+}
+
+async function expectMovedFileVisible(
+  page: Page,
+  oldPath: string,
+  newPath: string
+) {
+  await expect(fileRow(page, oldPath)).toHaveCount(0, { timeout: 8000 });
+  const movedRow = fileRow(page, newPath);
+  try {
+    await expect(movedRow).toBeVisible({ timeout: 1000 });
+  } catch {
+    const parentFolder = newPath.split("/").slice(0, -1).join("/");
+    await folderRow(page, `${parentFolder}/`).click();
+    await expect(movedRow).toBeVisible({ timeout: 8000 });
+  }
+}
+
+async function expectNoMoveRequestDuring(
+  page: Page,
+  action: () => Promise<void>
+) {
+  const moveRequests: string[] = [];
+  const onRequest = (request: Request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/files/move"
+    ) {
+      moveRequests.push(request.url());
+    }
+  };
+
+  page.on("request", onRequest);
+  try {
+    await action();
+    await page.waitForTimeout(500);
+  } finally {
+    page.off("request", onRequest);
+  }
+  expect(moveRequests).toHaveLength(0);
 }
 
 async function searchFiles(page: Page, query: string) {
@@ -273,31 +399,28 @@ test.describe("k6 Studio E2E", () => {
   test("drag moves a script into a folder", async ({ page }) => {
     await waitForApp(page);
     const stamp = Date.now();
-    const script = `drag-move-${stamp}.ts`;
-    const folder = `drag-target-${stamp}`;
+    const script = `drag-${stamp}-a.ts`;
+    const folder = `drag-${stamp}-b`;
 
     await createScript(page, script);
     await createFolder(page, folder);
 
-    await dragFileToFolder(page, script, folder);
+    await dragFileToFolderAndWait(page, script, folder);
 
-    await expect(fileRow(page, `${folder}/${script}`)).toBeVisible({
-      timeout: 8000,
-    });
-    await expect(fileRow(page, script)).toHaveCount(0);
+    await expectMovedFileVisible(page, script, `${folder}/${script}`);
   });
 
   test("duplicate move is rejected and source remains", async ({ page }) => {
     await waitForApp(page);
     const stamp = Date.now();
-    const script = `duplicate-move-${stamp}.ts`;
-    const folder = `duplicate-target-${stamp}`;
+    const script = `duplicate-${stamp}-a.ts`;
+    const folder = `duplicate-${stamp}-b`;
 
     await createFolder(page, folder);
     await createScriptViaApi(page, script);
     await createScriptViaApi(page, `${folder}/${script}`);
 
-    await dragFileToFolder(page, script, folder);
+    await dragFileToFolderAndWait(page, script, folder, false);
 
     await expect(page.getByRole("status")).toContainText(
       /Destination.*exists/i,
@@ -310,34 +433,57 @@ test.describe("k6 Studio E2E", () => {
   test("history remains accessible after moving a script", async ({ page }) => {
     await waitForApp(page);
     const stamp = Date.now();
-    const script = `history-move-${stamp}.ts`;
-    const folder = `history-target-${stamp}`;
+    const script = `history-${stamp}-a.ts`;
+    const folder = `history-${stamp}-b`;
     const marker = await createScriptViaApi(page, script);
     await createFolder(page, folder);
-    await createReportFixture(`${script}-${stamp}.html`);
+    await createReportFixture(page, `${script}-${stamp}.html`);
     await selectFile(page, script, marker);
 
-    await dragFileToFolder(page, script, folder);
+    await dragFileToFolderAndWait(page, script, folder);
     const movedPath = `${folder}/${script}`;
-    await expect(fileRow(page, movedPath)).toBeVisible({ timeout: 8000 });
+    await expectMovedFileVisible(page, script, movedPath);
 
     await fileRow(page, movedPath).click();
     await expect(page.locator("main")).toContainText(movedPath);
     await page.getByRole("tab", { name: /test history/i }).click();
 
-    const movedReportName = new RegExp(
+    const movedReportNamePattern = new RegExp(
       `${escapeRegExp(folder)}/${escapeRegExp(script)}-\\d+\\.html`
     );
-    await expect(page.getByText(movedReportName)).toBeVisible({
+    const reportRow = page.getByText(movedReportNamePattern).first();
+    await expect(reportRow).toBeVisible({
       timeout: 15000,
     });
+
+    const reportRowText = await reportRow.textContent();
+    const movedReportName = reportRowText?.match(movedReportNamePattern)?.[0];
+    expect(movedReportName).toBeTruthy();
+
+    const reportResponsePromise = page.waitForResponse((response) => {
+      return (
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname ===
+          `/api/reports/${encodeURIComponent(movedReportName as string)}`
+      );
+    });
+    await reportRow.click();
+    const reportResponse = await reportResponsePromise;
+    expect(reportResponse.status()).toBe(200);
+
+    const iframeSelector = `iframe[title=${JSON.stringify(movedReportName)}]`;
+    await expect(page.locator(iframeSelector)).toBeVisible();
+    const reportFrame = page.frameLocator(iframeSelector);
+    await expect(
+      reportFrame.getByText("deterministic-report-fixture")
+    ).toBeVisible();
   });
 
   test("running script cannot be moved", async ({ page }) => {
     await waitForApp(page);
     const stamp = Date.now();
-    const script = `active-lock-${stamp}.ts`;
-    const folder = `active-target-${stamp}`;
+    const script = `active-${stamp}-a.ts`;
+    const folder = `active-${stamp}-b`;
     const marker = `e2e-marker-${stamp}`;
     await createScriptViaApiWithContent(
       page,
@@ -353,7 +499,15 @@ test.describe("k6 Studio E2E", () => {
     await expect(
       fileRow(page, script).locator("input[type='checkbox']")
     ).toBeDisabled();
-    await dragFileToFolder(page, script, folder);
+    await expectNoMoveRequestDuring(page, async () => {
+      try {
+        await fileRow(page, script).dragTo(folderRow(page, `${folder}/`), {
+          timeout: 2000,
+        });
+      } catch {
+        // A disabled drag source may reject before any browser drag events fire.
+      }
+    });
     await expect(fileRow(page, script)).toBeVisible();
     await expect(fileRow(page, `${folder}/${script}`)).toHaveCount(0);
 
