@@ -224,6 +224,18 @@ export default function FileExplorer({
     await fetchTree();
   }
 
+  function handleRootDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    setDropTarget(null);
+  }
+
+  function handleRootDrop(event: React.DragEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    void handleDropOnFolder("");
+  }
+
   function renderTree(nodes: FileNode[], depth = 0): React.ReactNode {
     return nodes.map((node) => {
       if (node.type === "folder") {
@@ -358,23 +370,30 @@ export default function FileExplorer({
         data-testid="file-explorer-scroll"
         className="min-h-0 flex-1 px-1 py-1"
       >
-        {tree.length === 0 ? (
-          <EmptyState
-            icon={FileCode2}
-            title="No scripts yet"
-            description="Create a script to start a load test."
-            className="py-8"
-          />
-        ) : filteredTree.length === 0 ? (
-          <EmptyState
-            icon={Search}
-            title="No matches"
-            description="Try another search."
-            className="py-8"
-          />
-        ) : (
-          renderTree(filteredTree)
-        )}
+        <div
+          data-testid="file-explorer-root-drop-target"
+          className="min-h-full"
+          onDragOver={handleRootDragOver}
+          onDrop={handleRootDrop}
+        >
+          {tree.length === 0 ? (
+            <EmptyState
+              icon={FileCode2}
+              title="No scripts yet"
+              description="Create a script to start a load test."
+              className="py-8"
+            />
+          ) : filteredTree.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="No matches"
+              description="Try another search."
+              className="py-8"
+            />
+          ) : (
+            renderTree(filteredTree)
+          )}
+        </div>
       </ScrollArea>
     </div>
   );
@@ -413,11 +432,14 @@ function isMovementDisabled(
 function pruneNestedSelections(items: MoveSelection[]): MoveSelection[] {
   const selectedFolders = items
     .filter((item) => item.type === "folder")
-    .map((item) => `${item.path.replace(/\/+$/, "")}/`);
+    .map((item) => normalizeFolderPath(item.path));
 
   return items.filter((item) => {
-    if (item.type === "folder") return true;
-    return !selectedFolders.some((prefix) => item.path.startsWith(prefix));
+    const itemPath = normalizeFolderPath(item.path);
+    return !selectedFolders.some((folderPath) => {
+      if (folderPath === itemPath) return false;
+      return itemPath.startsWith(`${folderPath}/`);
+    });
   });
 }
 

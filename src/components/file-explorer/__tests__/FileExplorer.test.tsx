@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import FileExplorer from "@/components/file-explorer/FileExplorer";
 
 global.fetch = jest.fn() as jest.Mock;
@@ -52,6 +52,27 @@ function scriptsTree() {
   ];
 }
 
+function nestedScriptsTree() {
+  return [
+    {
+      path: "src/",
+      name: "src",
+      type: "folder",
+      children: [
+        {
+          path: "src/nested/",
+          name: "nested",
+          type: "folder",
+          children: [
+            { path: "src/nested/a.ts", name: "a.ts", type: "file" },
+          ],
+        },
+      ],
+    },
+    { path: "dest/", name: "dest", type: "folder", children: [] },
+  ];
+}
+
 function okJson(json: unknown = {}) {
   return {
     ok: true,
@@ -94,9 +115,49 @@ async function dragRowToFolder(rowPath: string, folderPath: string) {
     .getAllByTestId("sidebar-folder-item")
     .find((item) => item.getAttribute("data-path") === folderPath);
   if (!target) throw new Error(`folder target not found: ${folderPath}`);
-  fireEvent.dragStart(source);
-  fireEvent.dragOver(target);
-  fireEvent.drop(target);
+  await act(async () => {
+    fireEvent.dragStart(source);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    await Promise.resolve();
+  });
+}
+
+async function dragRowToRoot(rowPath: string) {
+  await screen.findByText(rowPath.split("/").filter(Boolean).pop() ?? rowPath);
+  const source = screen
+    .getAllByTestId(rowPath.endsWith("/") ? "sidebar-folder-item" : "sidebar-file-item")
+    .find((item) => item.getAttribute("data-path") === rowPath);
+  if (!source) throw new Error(`source row not found: ${rowPath}`);
+  const target = await screen.findByTestId("file-explorer-root-drop-target");
+  await act(async () => {
+    fireEvent.dragStart(source);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    await Promise.resolve();
+  });
+}
+
+async function dragRowToFile(rowPath: string, filePath: string) {
+  await screen.findByText(rowPath.split("/").filter(Boolean).pop() ?? rowPath);
+  const source = screen
+    .getAllByTestId(rowPath.endsWith("/") ? "sidebar-folder-item" : "sidebar-file-item")
+    .find((item) => item.getAttribute("data-path") === rowPath);
+  if (!source) throw new Error(`source row not found: ${rowPath}`);
+  const target = screen
+    .getAllByTestId("sidebar-file-item")
+    .find((item) => item.getAttribute("data-path") === filePath);
+  if (!target) throw new Error(`file target not found: ${filePath}`);
+  await act(async () => {
+    fireEvent.dragStart(source);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    await Promise.resolve();
+  });
+}
+
+function moveApiCalls() {
+  return fetchMock.mock.calls.filter(([url]) => url === "/api/files/move");
 }
 
 beforeEach(() => {
@@ -228,6 +289,56 @@ describe("FileExplorer", () => {
     });
   });
 
+  it("prunes redundant selected descendant folders when an ancestor folder is selected", async () => {
+    moveFetchSequence(nestedScriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await selectCheckbox("Select src");
+    await selectCheckbox("Select nested");
+    await dragRowToFolder("src/", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastFetchBody()).toEqual({
+      items: [{ path: "src", type: "folder" }],
+      targetFolder: "dest",
+    });
+  });
+
+  it("drops a nested file on the root drop target with an empty target folder", async () => {
+    moveFetchSequence(nestedScriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await dragRowToRoot("src/nested/a.ts");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastFetchBody()).toEqual({
+      items: [{ path: "src/nested/a.ts", type: "file" }],
+      targetFolder: "",
+    });
+  });
+
+  it("dropping onto a file row is an explicit no-op", async () => {
+    moveFetchSequence(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await dragRowToFile("src/a.ts", "src/b.ts");
+
+    expect(moveApiCalls()).toHaveLength(0);
+  });
+
   it("successful file move refreshes tree, clears selection, and reports selected path update", async () => {
     const onFileRenamed = jest.fn();
     moveFetchSequence(scriptsTree(), [
@@ -323,6 +434,38 @@ describe("FileExplorer", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(runningRow);
     expect(onSelectFile).toHaveBeenCalledWith("src/a.ts");
+  });
+
+  it("does not move when dragging the running script onto a valid folder target", async () => {
+    mockFilesTree(scriptsTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+        globalRunningScript="src/a.ts"
+      />
+    );
+
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    expect(moveApiCalls()).toHaveLength(0);
+  });
+
+  it("does not move when dragging a folder containing the running script onto a valid folder target", async () => {
+    mockFilesTree(scriptsTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+        globalRunningScript="src/a.ts"
+      />
+    );
+
+    await dragRowToFolder("src/", "dest/");
+
+    expect(moveApiCalls()).toHaveLength(0);
   });
 
   it("opens one folder-scoped script dialog and creates the script under that folder", async () => {
