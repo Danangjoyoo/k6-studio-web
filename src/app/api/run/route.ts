@@ -50,83 +50,90 @@ export async function POST(request: Request) {
     );
   }
 
-  await ensureBuckets();
-  const client = getMinioClient();
-  const scriptKey = toNamespacedKey(namespace, filename);
+  try {
+    await ensureBuckets();
+    const client = getMinioClient();
+    const scriptKey = toNamespacedKey(namespace, filename);
 
-  const objStream = await client.getObject(SCRIPTS_BUCKET, scriptKey);
-  const chunks: Buffer[] = [];
-  await new Promise<void>((resolve, reject) => {
-    objStream.on("data", (c: Buffer) => chunks.push(c));
-    objStream.on("end", resolve);
-    objStream.on("error", reject);
-  });
+    const objStream = await client.getObject(SCRIPTS_BUCKET, scriptKey);
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      objStream.on("data", (c: Buffer) => chunks.push(c));
+      objStream.on("end", resolve);
+      objStream.on("error", reject);
+    });
 
-  // Use basename so nested paths (e.g. auth/login.ts) don't create sub-dirs
-  const runDir = join(tmpdir(), `k6-run-${Date.now()}`);
-  await mkdir(runDir, { recursive: true });
-  const scriptPath = join(runDir, basename(filename));
-  const reportPath = join(runDir, "report.html");
-  await writeFile(scriptPath, Buffer.concat(chunks).toString("utf-8"), "utf-8");
+    // Use basename so nested paths (e.g. auth/login.ts) don't create sub-dirs
+    const runDir = join(tmpdir(), `k6-run-${Date.now()}`);
+    await mkdir(runDir, { recursive: true });
+    const scriptPath = join(runDir, basename(filename));
+    const reportPath = join(runDir, "report.html");
+    await writeFile(scriptPath, Buffer.concat(chunks).toString("utf-8"), "utf-8");
 
-  const encoder = new TextEncoder();
-  const abortController = new AbortController();
-  request.signal.addEventListener("abort", () => abortController.abort());
+    const encoder = new TextEncoder();
+    const abortController = new AbortController();
+    request.signal.addEventListener("abort", () => abortController.abort());
 
-  const readable = new ReadableStream({
-    async start(controller) {
-      function send(obj: Record<string, unknown>) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-        } catch {
-          // controller already closed
+    const readable = new ReadableStream({
+      async start(controller) {
+        function send(obj: Record<string, unknown>) {
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)
+            );
+          } catch {
+            // controller already closed
+          }
         }
-      }
 
-      try {
-        const exitCode = await runK6(
-          scriptPath,
-          reportPath,
-          (line) => send({ line }),
-          abortController.signal
-        );
-
-        const reportName = `${filename}-${Date.now()}.html`;
-        const reportKey = toNamespacedKey(namespace, reportName);
         try {
-          await access(reportPath);
-          await client.putObject(
-            REPORTS_BUCKET,
-            reportKey,
-            createReadStream(reportPath)
+          const exitCode = await runK6(
+            scriptPath,
+            reportPath,
+            (line) => send({ line }),
+            abortController.signal
           );
-        } catch {
-          send({ line: "[warning] could not save HTML report" });
-        }
 
-        send({ done: true, exitCode, reportName });
-      } finally {
-        // Wait for the dashboard port to be released before unlocking so the
-        // next run never races the kernel socket (bug H2).
-        await waitForPortFree(DASHBOARD_PORT, 5000);
-        release();
-        try {
-          controller.close();
-        } catch {
-          // already closed
-        }
-      }
-    },
-    cancel() {
-      abortController.abort();
-    },
-  });
+          const reportName = `${filename}-${Date.now()}.html`;
+          const reportKey = toNamespacedKey(namespace, reportName);
+          try {
+            await access(reportPath);
+            await client.putObject(
+              REPORTS_BUCKET,
+              reportKey,
+              createReadStream(reportPath)
+            );
+          } catch {
+            send({ line: "[warning] could not save HTML report" });
+          }
 
-  return new Response(readable, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+          send({ done: true, exitCode, reportName });
+        } finally {
+          // Wait for the dashboard port to be released before unlocking so the
+          // next run never races the kernel socket (bug H2).
+          await waitForPortFree(DASHBOARD_PORT, 5000);
+          release();
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+        }
+      },
+      cancel() {
+        abortController.abort();
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  } catch (error) {
+    release();
+    throw error;
+  }
 }

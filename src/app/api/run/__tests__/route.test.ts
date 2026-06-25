@@ -1,7 +1,7 @@
 import { writeFile } from "fs/promises";
 import { Readable } from "stream";
 import { POST } from "@/app/api/run/route";
-import { _reset } from "@/lib/run-lock";
+import { getStatus, _reset } from "@/lib/run-lock";
 import { REPORTS_BUCKET, SCRIPTS_BUCKET } from "@/lib/minio";
 
 const mockEnsureBuckets = jest.fn();
@@ -27,6 +27,14 @@ jest.mock("@/lib/k6", () => ({
 
 function objectStream(content: string) {
   return Readable.from([Buffer.from(content)]);
+}
+
+function errorStream(error: Error) {
+  return new Readable({
+    read() {
+      this.destroy(error);
+    },
+  });
 }
 
 async function readSse(response: Response) {
@@ -108,6 +116,24 @@ describe("POST /api/run", () => {
     });
     expect(response.status).toBe(400);
     expect(mockRunK6).not.toHaveBeenCalled();
+  });
+
+  it("releases the run lock when script stream setup fails", async () => {
+    mockGetObject.mockResolvedValueOnce(errorStream(new Error("read failed")));
+
+    await expect(
+      POST(
+        new Request("http://localhost/api/run", {
+          method: "POST",
+          body: JSON.stringify({
+            namespace: "team-a",
+            filename: "api/smoke.ts",
+          }),
+        })
+      )
+    ).rejects.toThrow("read failed");
+
+    expect(getStatus().running).toBe(false);
   });
 
   it("includes namespace in conflict status", async () => {

@@ -55,6 +55,11 @@ describe("run-lock", () => {
     });
   });
 
+  it("does not hold the lock when namespace validation fails", () => {
+    expect(() => tryAcquire("x", "bad/name")).toThrow();
+    expect(getStatus().running).toBe(false);
+  });
+
   it("getStatus reflects idle after release", () => {
     tryAcquire("a.ts");
     release();

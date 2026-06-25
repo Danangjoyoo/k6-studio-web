@@ -33,8 +33,9 @@ export function tryAcquire(
   namespace: string = DEFAULT_NAMESPACE
 ): boolean {
   if (_running) return false;
+  const normalizedNamespace = normalizeNamespace(namespace);
   _running = true;
-  _namespace = normalizeNamespace(namespace);
+  _namespace = normalizedNamespace;
   _script = script;
   _startedAt = Date.now();
   return true;
