@@ -1,0 +1,61 @@
+import { EventEmitter } from "events";
+import { GET, POST } from "@/app/api/namespaces/route";
+import { SCRIPTS_BUCKET } from "@/lib/minio";
+
+const mockEnsureBuckets = jest.fn();
+const mockClient = { listObjects: jest.fn(), putObject: jest.fn() };
+
+jest.mock("@/lib/minio", () => ({
+  getMinioClient: () => mockClient,
+  SCRIPTS_BUCKET: "k6-scripts",
+  ensureBuckets: () => mockEnsureBuckets(),
+}));
+
+function objectStream(names: string[]) {
+  const stream = new EventEmitter();
+  queueMicrotask(() => {
+    for (const name of names) stream.emit("data", { name });
+    stream.emit("end");
+  });
+  return stream;
+}
+
+describe("/api/namespaces", () => {
+  beforeEach(() => {
+    mockEnsureBuckets.mockReset();
+    mockClient.listObjects.mockReset();
+    mockClient.putObject.mockReset();
+  });
+
+  it("lists unique namespaces and includes default", async () => {
+    mockClient.listObjects.mockImplementation(() =>
+      objectStream(["team-a/api.ts", "team-a/.keep", "team-b/load.ts"])
+    );
+
+    const response = await GET();
+
+    await expect(response.json()).resolves.toEqual({
+      namespaces: ["default", "team-a", "team-b"],
+      current: "default",
+    });
+    expect(mockClient.listObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, "", true);
+  });
+
+  it("creates a namespace marker", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/namespaces", {
+        method: "POST",
+        body: JSON.stringify({ name: "team-a" }),
+      })
+    );
+
+    expect(response.status).toBe(201);
+    expect(mockClient.putObject).toHaveBeenCalledWith(
+      SCRIPTS_BUCKET,
+      "team-a/.keep",
+      expect.any(Buffer),
+      0,
+      { "Content-Type": "application/octet-stream" }
+    );
+  });
+});
