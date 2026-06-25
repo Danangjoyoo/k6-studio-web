@@ -35,10 +35,23 @@ describe("/api/namespaces", () => {
     const response = await GET();
 
     await expect(response.json()).resolves.toEqual({
-      namespaces: ["default", "team-a", "team-b"],
+      namespaces: ["default", "team-a"],
       current: "default",
     });
     expect(mockClient.listObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, "", true);
+  });
+
+  it("lists only explicitly marked namespaces and default", async () => {
+    mockClient.listObjects.mockImplementation(() =>
+      objectStream(["src/a.ts", "folder/.keep", "team-a/.keep", "team-a/script.ts"])
+    );
+
+    const response = await GET();
+
+    await expect(response.json()).resolves.toEqual({
+      namespaces: ["default", "team-a"],
+      current: "default",
+    });
   });
 
   it("creates a namespace marker", async () => {

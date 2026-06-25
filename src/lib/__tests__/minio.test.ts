@@ -52,6 +52,21 @@ describe("getMinioClient env parsing", () => {
     expect(client.secretKey).toBe("secret");
   });
 
+  it("uses port 9000 for legacy MINIO_ENDPOINT without MINIO_PORT", async () => {
+    process.env.MINIO_ENDPOINT = "minio";
+
+    const { getMinioClient } = await import("@/lib/minio");
+    const client = getMinioClient() as unknown as {
+      host: string;
+      port: number;
+      protocol: string;
+    };
+
+    expect(client.host).toBe("minio");
+    expect(client.port).toBe(9000);
+    expect(client.protocol).toBe("http:");
+  });
+
   it("parses URL endpoints and exports AWS_S3_BUCKET as scripts bucket", async () => {
     process.env.AWS_S3_BUCKET = "custom-scripts";
     process.env.AWS_S3_ENDPOINT = "https://s3.local:9443";

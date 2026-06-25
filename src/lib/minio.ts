@@ -6,7 +6,11 @@ const endpointValue =
   process.env.AWS_S3_ENDPOINT ??
   (process.env.MINIO_ENDPOINT && process.env.MINIO_PORT
     ? `${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}`
-    : process.env.MINIO_ENDPOINT) ??
+    : process.env.MINIO_ENDPOINT &&
+        !process.env.MINIO_ENDPOINT.includes("://") &&
+        !process.env.MINIO_ENDPOINT.includes(":")
+      ? `${process.env.MINIO_ENDPOINT}:9000`
+      : process.env.MINIO_ENDPOINT) ??
   "localhost:9000";
 
 function parseEndpoint(value: string) {

@@ -12,13 +12,20 @@ export async function GET() {
   const client = getMinioClient();
   const stream = client.listObjects(SCRIPTS_BUCKET, "", true);
   const namespaces = new Set<string>([DEFAULT_NAMESPACE]);
+  const markerNamespaces = new Set<string>();
+  const contentNamespaces = new Set<string>();
 
   await new Promise<void>((resolve, reject) => {
     stream.on("data", (obj) => {
       if (!obj.name || !obj.name.includes("/")) return;
-      const [namespace] = obj.name.split("/");
+      const [namespace, ...relativeParts] = obj.name.split("/");
       try {
-        namespaces.add(normalizeNamespace(namespace));
+        const normalized = normalizeNamespace(namespace);
+        if (relativeParts.length === 1 && relativeParts[0] === ".keep") {
+          markerNamespaces.add(normalized);
+          return;
+        }
+        contentNamespaces.add(normalized);
       } catch {
         // Ignore objects that do not follow the namespace key convention.
       }
@@ -26,6 +33,12 @@ export async function GET() {
     stream.on("end", resolve);
     stream.on("error", reject);
   });
+
+  for (const namespace of markerNamespaces) {
+    if (contentNamespaces.has(namespace)) {
+      namespaces.add(namespace);
+    }
+  }
 
   return NextResponse.json({
     namespaces: Array.from(namespaces).sort((a, b) => {
