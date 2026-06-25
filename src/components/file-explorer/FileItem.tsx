@@ -16,12 +16,14 @@ interface FileItemProps {
   path: string;
   depth?: number;
   isSelected: boolean;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   onDelete: () => void;
   onRename: (newPath: string) => Promise<void>;
   isSelectionChecked?: boolean;
   isSelectionDisabled?: boolean;
+  showSelectionControl?: boolean;
   onSelectionChange?: (checked: boolean, path: string) => void;
+  onSelectionToggle?: (path: string) => void;
   isDragEnabled?: boolean;
   isDragDisabled?: boolean;
   isDropActive?: boolean;
@@ -43,7 +45,9 @@ export default function FileItem({
   onRename,
   isSelectionChecked,
   isSelectionDisabled = false,
+  showSelectionControl,
   onSelectionChange,
+  onSelectionToggle,
   isDragEnabled = false,
   isDragDisabled = false,
   isDropActive = false,
@@ -57,6 +61,8 @@ export default function FileItem({
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const selectionVisible =
+    Boolean(showSelectionControl) || Boolean(isSelectionChecked);
 
   function startEdit(e: React.MouseEvent) {
     e.stopPropagation();
@@ -119,6 +125,7 @@ export default function FileItem({
         data-path={path}
         data-selected={isSelected || isSelectionChecked ? "true" : undefined}
         data-drop-active={isDropActive ? "true" : undefined}
+        aria-selected={isSelectionChecked ? true : undefined}
         draggable={isDragEnabled && !isDragDisabled}
         tabIndex={0}
         style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
@@ -141,16 +148,28 @@ export default function FileItem({
         onDragEnd={(e) => onRowDragEnd?.(path, e)}
         onDragLeave={(e) => onRowDragLeave?.(path, e)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === "Enter") {
             e.preventDefault();
-            onClick();
+            onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
+            return;
+          }
+          if (e.key === " " && onSelectionToggle && !isSelectionDisabled) {
+            e.preventDefault();
+            onSelectionToggle(path);
           }
         }}
       >
         <div className="flex min-w-0 items-center gap-2">
           {onSelectionChange && (
             <span
-              className="flex h-4 w-4 shrink-0 items-center justify-center"
+              data-testid="row-selection-control"
+              data-selection-visible={selectionVisible ? "true" : "false"}
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center transition-opacity",
+                selectionVisible
+                  ? "pointer-events-auto opacity-100"
+                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus:pointer-events-auto group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+              )}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}

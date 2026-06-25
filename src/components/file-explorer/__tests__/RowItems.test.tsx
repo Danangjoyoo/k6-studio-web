@@ -36,12 +36,45 @@ function renderFolderItem(
 }
 
 describe("file explorer row items", () => {
-  it("file row renders selection checkbox, toggles callback, and does not select the file", () => {
+  it("file row keeps the checkbox mounted but visually hidden until selection controls are active", () => {
+    const onSelectionChange = jest.fn();
+    renderFileItem({
+      isSelectionChecked: false,
+      onSelectionChange,
+    });
+
+    const row = screen.getByTestId("sidebar-file-item");
+    const control = within(row).getByTestId("row-selection-control");
+    const checkbox = within(row).getByRole("checkbox", {
+      name: "Select login.ts",
+    });
+
+    expect(checkbox).not.toBeChecked();
+    expect(control).toHaveAttribute("data-selection-visible", "false");
+    expect(control).toHaveClass("opacity-0");
+  });
+
+  it("selected file row shows the checkbox and exposes aria-selected", () => {
+    renderFileItem({
+      isSelectionChecked: true,
+      onSelectionChange: jest.fn(),
+    });
+
+    const row = screen.getByTestId("sidebar-file-item");
+    const control = within(row).getByTestId("row-selection-control");
+
+    expect(row).toHaveAttribute("aria-selected", "true");
+    expect(control).toHaveAttribute("data-selection-visible", "true");
+    expect(control).toHaveClass("opacity-100");
+  });
+
+  it("file row checkbox toggles callback and does not select the file", () => {
     const onClick = jest.fn();
     const onSelectionChange = jest.fn();
     renderFileItem({
       onClick,
       isSelectionChecked: false,
+      showSelectionControl: true,
       onSelectionChange,
     });
 
@@ -58,9 +91,12 @@ describe("file explorer row items", () => {
 
   it("folder row checkbox toggles callback and does not expand or collapse", () => {
     const onSelectionChange = jest.fn();
+    const onToggleOpen = jest.fn();
     renderFolderItem({
-      defaultOpen: true,
+      isOpen: true,
+      onToggleOpen,
       isSelectionChecked: false,
+      showSelectionControl: true,
       onSelectionChange,
     });
 
@@ -72,6 +108,39 @@ describe("file explorer row items", () => {
     fireEvent.click(checkbox);
 
     expect(onSelectionChange).toHaveBeenCalledWith(true, "src/");
+    expect(onToggleOpen).not.toHaveBeenCalled();
+    expect(screen.getByText("child content")).toBeInTheDocument();
+  });
+
+  it("space toggles row selection while enter keeps the primary action", () => {
+    const onClick = jest.fn();
+    const onSelectionToggle = jest.fn();
+    renderFileItem({
+      onClick,
+      onSelectionToggle,
+      onSelectionChange: jest.fn(),
+    });
+
+    const fileRow = screen.getByTestId("sidebar-file-item");
+    fireEvent.keyDown(fileRow, { key: " ", code: "Space" });
+    fireEvent.keyDown(fileRow, { key: "Enter", code: "Enter" });
+
+    expect(onSelectionToggle).toHaveBeenCalledWith("src/login.ts");
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("controlled folder rows call onToggleOpen for primary actions", () => {
+    const onToggleOpen = jest.fn();
+    renderFolderItem({
+      isOpen: true,
+      onToggleOpen,
+    });
+
+    const folderRow = screen.getByTestId("sidebar-folder-item");
+    fireEvent.click(folderRow);
+    fireEvent.keyDown(folderRow, { key: "Enter", code: "Enter" });
+
+    expect(onToggleOpen).toHaveBeenCalledTimes(2);
     expect(screen.getByText("child content")).toBeInTheDocument();
   });
 

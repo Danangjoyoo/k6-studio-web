@@ -16,6 +16,9 @@ interface FolderItemProps {
   path: string;
   depth?: number;
   defaultOpen?: boolean;
+  isOpen?: boolean;
+  onToggleOpen?: () => void;
+  onRowClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
   onRename: (newPath: string) => Promise<void>;
   onDelete: () => void;
   onCreateScript: (parentPath: string) => void;
@@ -23,7 +26,9 @@ interface FolderItemProps {
   children: React.ReactNode;
   isSelectionChecked?: boolean;
   isSelectionDisabled?: boolean;
+  showSelectionControl?: boolean;
   onSelectionChange?: (checked: boolean, path: string) => void;
+  onSelectionToggle?: (path: string) => void;
   isDragEnabled?: boolean;
   isDragDisabled?: boolean;
   isDropActive?: boolean;
@@ -40,6 +45,9 @@ export default function FolderItem({
   path,
   depth = 0,
   defaultOpen = true,
+  isOpen,
+  onToggleOpen,
+  onRowClick,
   onRename,
   onDelete,
   onCreateScript,
@@ -47,7 +55,9 @@ export default function FolderItem({
   children,
   isSelectionChecked,
   isSelectionDisabled = false,
+  showSelectionControl,
   onSelectionChange,
+  onSelectionToggle,
   isDragEnabled = false,
   isDragDisabled = false,
   isDropActive = false,
@@ -58,10 +68,30 @@ export default function FolderItem({
   onRowDragEnd,
   onRowDragLeave,
 }: FolderItemProps) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const open = isOpen ?? uncontrolledOpen;
+  const selectionVisible =
+    Boolean(showSelectionControl) || Boolean(isSelectionChecked);
+
+  function toggleOpen() {
+    if (onToggleOpen) {
+      onToggleOpen();
+      return;
+    }
+    setUncontrolledOpen((value) => !value);
+  }
+
+  function handleRowClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (editing) return;
+    if (onRowClick) {
+      onRowClick(event);
+      return;
+    }
+    toggleOpen();
+  }
 
   function startEdit(e: React.MouseEvent) {
     e.stopPropagation();
@@ -125,6 +155,7 @@ export default function FolderItem({
           data-path={path}
           data-selected={isSelectionChecked ? "true" : undefined}
           data-drop-active={isDropActive ? "true" : undefined}
+          aria-selected={isSelectionChecked ? true : undefined}
           draggable={isDragEnabled && !isDragDisabled}
           tabIndex={0}
           style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
@@ -136,7 +167,7 @@ export default function FolderItem({
             isDragDisabled && "cursor-default",
             isSelectionDisabled && "opacity-75"
           )}
-          onClick={() => !editing && setOpen((o) => !o)}
+          onClick={handleRowClick}
           onDoubleClick={startEdit}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
@@ -144,16 +175,28 @@ export default function FolderItem({
           onDragEnd={(e) => onRowDragEnd?.(path, e)}
           onDragLeave={(e) => onRowDragLeave?.(path, e)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
+            if (e.key === "Enter") {
               e.preventDefault();
-              setOpen((o) => !o);
+              toggleOpen();
+              return;
+            }
+            if (e.key === " " && onSelectionToggle && !isSelectionDisabled) {
+              e.preventDefault();
+              onSelectionToggle(path);
             }
           }}
         >
           <div className="flex min-w-0 items-center gap-1.5">
             {onSelectionChange && (
               <span
-                className="flex h-4 w-4 shrink-0 items-center justify-center"
+                data-testid="row-selection-control"
+                data-selection-visible={selectionVisible ? "true" : "false"}
+                className={cn(
+                  "flex h-4 w-4 shrink-0 items-center justify-center transition-opacity",
+                  selectionVisible
+                    ? "pointer-events-auto opacity-100"
+                    : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus:pointer-events-auto group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                )}
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
