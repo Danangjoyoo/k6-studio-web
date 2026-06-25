@@ -6,6 +6,27 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import AppShell from "@/components/layout/AppShell";
 
 let mockOnFileDeleted: ((name: string) => void) | undefined;
+let mockFileExplorerProps:
+  | {
+      selectedFile: string | null;
+      globalRunningScript?: string | null;
+      onFileRenamed?: (oldPath: string, newPath: string) => void;
+    }
+  | undefined;
+let mockWorkspaceState = {
+  runEpoch: 0,
+  globalRunning: false,
+  globalRunningScript: "running.js" as string | null,
+};
+
+jest.mock("@/contexts/ScriptWorkspaceContext", () => ({
+  ScriptWorkspaceProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useScriptWorkspace: () => ({
+    ...mockWorkspaceState,
+  }),
+}));
 
 jest.mock("react-resizable-panels", () => ({
   PanelGroup: ({ children }: { children: React.ReactNode }) => (
@@ -18,14 +39,24 @@ jest.mock("react-resizable-panels", () => ({
 jest.mock("@/components/file-explorer/FileExplorer", () => ({
   __esModule: true,
   default: ({
+    selectedFile,
     onSelectFile,
     onFileDeleted,
+    onFileRenamed,
+    globalRunningScript,
   }: {
     selectedFile: string | null;
     onSelectFile: (name: string) => void;
     onFileDeleted?: (name: string) => void;
+    onFileRenamed?: (oldPath: string, newPath: string) => void;
+    globalRunningScript?: string | null;
   }) => {
     mockOnFileDeleted = onFileDeleted;
+    mockFileExplorerProps = {
+      selectedFile,
+      onFileRenamed,
+      globalRunningScript,
+    };
     return (
       <div data-testid="file-explorer">
         <button type="button" onClick={() => onSelectFile("test.js")}>
@@ -33,6 +64,12 @@ jest.mock("@/components/file-explorer/FileExplorer", () => ({
         </button>
         <button type="button" onClick={() => onFileDeleted?.("test.js")}>
           delete-test
+        </button>
+        <button
+          type="button"
+          onClick={() => onFileRenamed?.("test.js", "moved/test.js")}
+        >
+          move-test
         </button>
       </div>
     );
@@ -57,6 +94,16 @@ jest.mock("@/components/tabs/TestHistoryTab", () => ({
 }));
 
 describe("AppShell", () => {
+  beforeEach(() => {
+    mockFileExplorerProps = undefined;
+    mockOnFileDeleted = undefined;
+    mockWorkspaceState = {
+      runEpoch: 0,
+      globalRunning: false,
+      globalRunningScript: "running.js",
+    };
+  });
+
   it("renders file explorer and tab navigation", () => {
     render(<AppShell />);
     expect(screen.getByTestId("file-explorer")).toBeInTheDocument();
@@ -79,5 +126,17 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /delete-test/i }));
     expect(screen.getByTestId("editor-tab")).toHaveTextContent("none");
     expect(mockOnFileDeleted).toBeDefined();
+  });
+
+  it("passes running script and updates selectedFile when FileExplorer reports a move", () => {
+    render(<AppShell />);
+
+    expect(mockFileExplorerProps?.globalRunningScript).toBe("running.js");
+
+    fireEvent.click(screen.getByRole("button", { name: /select-test/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("test.js");
+
+    fireEvent.click(screen.getByRole("button", { name: /move-test/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("moved/test.js");
   });
 });

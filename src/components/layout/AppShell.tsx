@@ -52,6 +52,7 @@ function WorkspaceContent({
             onSelectFile={onSelectFile}
             onFileDeleted={onFileDeleted}
             onFileRenamed={onFileRenamed}
+            globalRunningScript={globalRunningScript}
           />
         </ResizablePanel>
 

@@ -29,6 +29,76 @@ function mockFetchSequence(...responses: Array<{ ok?: boolean; json?: unknown }>
   }
 }
 
+function scriptsTree() {
+  return [
+    {
+      path: "src/",
+      name: "src",
+      type: "folder",
+      children: [
+        { path: "src/a.ts", name: "a.ts", type: "file" },
+        { path: "src/b.ts", name: "b.ts", type: "file" },
+      ],
+    },
+    {
+      path: "other/",
+      name: "other",
+      type: "folder",
+      children: [
+        { path: "other/c.ts", name: "c.ts", type: "file" },
+      ],
+    },
+    { path: "dest/", name: "dest", type: "folder", children: [] },
+  ];
+}
+
+function okJson(json: unknown = {}) {
+  return {
+    ok: true,
+    json: async () => json,
+  };
+}
+
+function moveFetchSequence(
+  initialTree: unknown[],
+  refreshedTree: unknown[] = initialTree,
+  moveResponse: { ok?: boolean; json?: unknown } = { ok: true, json: {} }
+) {
+  fetchMock.mockReset();
+  fetchMock
+    .mockResolvedValueOnce(okJson({ files: [], tree: initialTree }))
+    .mockResolvedValueOnce({
+      ok: moveResponse.ok ?? true,
+      json: async () => moveResponse.json ?? {},
+    })
+    .mockResolvedValueOnce(okJson({ files: [], tree: refreshedTree }));
+}
+
+function lastFetchBody() {
+  const moveCall = fetchMock.mock.calls.find(([url]) => url === "/api/files/move");
+  if (!moveCall) throw new Error("move API was not called");
+  return JSON.parse(moveCall[1].body as string);
+}
+
+async function selectCheckbox(name: string) {
+  fireEvent.click(await screen.findByRole("checkbox", { name }));
+}
+
+async function dragRowToFolder(rowPath: string, folderPath: string) {
+  await screen.findByText(rowPath.split("/").filter(Boolean).pop() ?? rowPath);
+  const source = screen
+    .getAllByTestId(rowPath.endsWith("/") ? "sidebar-folder-item" : "sidebar-file-item")
+    .find((item) => item.getAttribute("data-path") === rowPath);
+  if (!source) throw new Error(`source row not found: ${rowPath}`);
+  const target = screen
+    .getAllByTestId("sidebar-folder-item")
+    .find((item) => item.getAttribute("data-path") === folderPath);
+  if (!target) throw new Error(`folder target not found: ${folderPath}`);
+  fireEvent.dragStart(source);
+  fireEvent.dragOver(target);
+  fireEvent.drop(target);
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
 });
@@ -70,6 +140,189 @@ describe("FileExplorer", () => {
       "data-path",
       "auth/login.ts"
     );
+  });
+
+  it("renders row checkboxes and selects multiple items without selecting file rows", async () => {
+    const onSelectFile = jest.fn();
+    mockFilesTree(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={onSelectFile} />);
+
+    const fileCheckbox = await screen.findByRole("checkbox", {
+      name: "Select a.ts",
+    });
+    const folderCheckbox = await screen.findByRole("checkbox", {
+      name: "Select other",
+    });
+
+    fireEvent.click(fileCheckbox);
+    fireEvent.click(folderCheckbox);
+
+    expect(fileCheckbox).toBeChecked();
+    expect(folderCheckbox).toBeChecked();
+    expect(onSelectFile).not.toHaveBeenCalled();
+  });
+
+  it("dragging a selected row posts all selected items to the target folder", async () => {
+    moveFetchSequence(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await selectCheckbox("Select a.ts");
+    await selectCheckbox("Select other");
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastFetchBody()).toEqual({
+      items: [
+        { path: "src/a.ts", type: "file" },
+        { path: "other", type: "folder" },
+      ],
+      targetFolder: "dest",
+    });
+  });
+
+  it("dragging an unselected row posts only that row", async () => {
+    moveFetchSequence(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await selectCheckbox("Select c.ts");
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastFetchBody()).toEqual({
+      items: [{ path: "src/a.ts", type: "file" }],
+      targetFolder: "dest",
+    });
+  });
+
+  it("prunes redundant selected children when an ancestor folder is selected", async () => {
+    moveFetchSequence(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await selectCheckbox("Select src");
+    await selectCheckbox("Select a.ts");
+    await dragRowToFolder("src/", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastFetchBody()).toEqual({
+      items: [{ path: "src", type: "folder" }],
+      targetFolder: "dest",
+    });
+  });
+
+  it("successful file move refreshes tree, clears selection, and reports selected path update", async () => {
+    const onFileRenamed = jest.fn();
+    moveFetchSequence(scriptsTree(), [
+      {
+        path: "dest/",
+        name: "dest",
+        type: "folder",
+        children: [{ path: "dest/a.ts", name: "a.ts", type: "file" }],
+      },
+    ]);
+
+    render(
+      <FileExplorer
+        selectedFile="src/a.ts"
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
+
+    await selectCheckbox("Select a.ts");
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    await waitFor(() => {
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "dest/a.ts");
+    });
+    expect(screen.queryByRole("checkbox", { name: "Select a.ts" })).not.toBeChecked();
+  });
+
+  it("successful folder move updates selected file path when selected file was under the folder", async () => {
+    const onFileRenamed = jest.fn();
+    moveFetchSequence(scriptsTree());
+
+    render(
+      <FileExplorer
+        selectedFile="src/a.ts"
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
+
+    await selectCheckbox("Select src");
+    await dragRowToFolder("src/", "dest/");
+
+    await waitFor(() => {
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "dest/src/a.ts");
+    });
+  });
+
+  it("failed move displays an accessible status and preserves selection", async () => {
+    moveFetchSequence(scriptsTree(), scriptsTree(), {
+      ok: false,
+      json: { error: "Destination already exists: dest/a.ts" },
+    });
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await selectCheckbox("Select a.ts");
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    expect(
+      await screen.findByRole("status")
+    ).toHaveTextContent("Destination already exists: dest/a.ts");
+    expect(screen.getByRole("checkbox", { name: "Select a.ts" })).toBeChecked();
+  });
+
+  it("disables move affordances for a running script and containing folder but keeps file click", async () => {
+    const onSelectFile = jest.fn();
+    mockFilesTree(scriptsTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={onSelectFile}
+        globalRunningScript="src/a.ts"
+      />
+    );
+
+    const runningCheckbox = await screen.findByRole("checkbox", {
+      name: "Select a.ts",
+    });
+    const folderCheckbox = await screen.findByRole("checkbox", {
+      name: "Select src",
+    });
+    const runningRow = screen
+      .getAllByTestId("sidebar-file-item")
+      .find((item) => item.getAttribute("data-path") === "src/a.ts");
+    if (!runningRow) throw new Error("running row missing");
+
+    expect(runningCheckbox).toBeDisabled();
+    expect(folderCheckbox).toBeDisabled();
+
+    fireEvent.dragStart(runningRow);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(runningRow);
+    expect(onSelectFile).toHaveBeenCalledWith("src/a.ts");
   });
 
   it("opens one folder-scoped script dialog and creates the script under that folder", async () => {
@@ -225,6 +478,7 @@ describe("FileExplorer", () => {
     expect(screen.getByText("login.ts")).toBeInTheDocument();
     expect(screen.queryByText("logout.ts")).not.toBeInTheDocument();
     expect(screen.queryByText("checkout.ts")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select login.ts" })).toBeInTheDocument();
   });
 
   it("uses a constrained scroll region for long file trees", async () => {

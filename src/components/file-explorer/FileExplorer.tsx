@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileCode2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +17,14 @@ export interface FileExplorerProps {
   onSelectFile: (name: string) => void;
   onFileDeleted?: (name: string) => void;
   onFileRenamed?: (oldPath: string, newPath: string) => void;
+  globalRunningScript?: string | null;
+}
+
+type MoveSelectionType = "file" | "folder";
+
+interface MoveSelection {
+  path: string;
+  type: MoveSelectionType;
 }
 
 const DEFAULT_SCRIPT = `// example script
@@ -42,6 +50,7 @@ export default function FileExplorer({
   onSelectFile,
   onFileDeleted,
   onFileRenamed,
+  globalRunningScript = null,
 }: FileExplorerProps) {
   const [tree, setTree] = useState<FileNode[]>([]);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
@@ -49,11 +58,22 @@ export default function FileExplorer({
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderDialogParent, setFolderDialogParent] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [selection, setSelection] = useState<Record<string, MoveSelection>>({});
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [moveStatus, setMoveStatus] = useState<string | null>(null);
+  const dragSourceRef = useRef<MoveSelection | null>(null);
 
   const fetchTree = useCallback(async () => {
     const res = await fetch("/api/files");
     const data = (await res.json()) as { tree: FileNode[] };
-    setTree(data.tree ?? []);
+    const nextTree = data.tree ?? [];
+    setTree(nextTree);
+    const validKeys = new Set(flattenSelectionKeys(nextTree));
+    setSelection((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([key]) => validKeys.has(key))
+      )
+    );
   }, []);
 
   useEffect(() => {
@@ -139,9 +159,79 @@ export default function FileExplorer({
     await fetchTree();
   }
 
+  function handleSelectionChange(
+    item: MoveSelection,
+    checked: boolean
+  ) {
+    setMoveStatus(null);
+    setSelection((current) => {
+      const next = { ...current };
+      if (checked) next[selectionKey(item)] = item;
+      else delete next[selectionKey(item)];
+      return next;
+    });
+  }
+
+  function handleDragStart(item: MoveSelection) {
+    dragSourceRef.current = item;
+    setMoveStatus(null);
+  }
+
+  async function handleDropOnFolder(targetFolderPath: string) {
+    const source = dragSourceRef.current;
+    setDropTarget(null);
+    dragSourceRef.current = null;
+    if (!source || isMovementDisabled(source, globalRunningScript)) return;
+
+    const sourceKey = selectionKey(source);
+    const selectedItems = Object.values(selection);
+    const rawItems = selection[sourceKey] ? selectedItems : [source];
+    const items = pruneNestedSelections(
+      rawItems.filter((item) => !isMovementDisabled(item, globalRunningScript))
+    );
+    if (items.length === 0) return;
+
+    const targetFolder = normalizeFolderPath(targetFolderPath);
+    const selectedPathUpdate = computeMovedSelectedPath(
+      selectedFile,
+      items,
+      targetFolder
+    );
+
+    const response = await fetch("/api/files/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, targetFolder }),
+    });
+
+    if (!response.ok) {
+      let message = "Move failed";
+      try {
+        const body = (await response.json()) as { error?: string };
+        message = body.error ?? message;
+      } catch {
+        // keep default message
+      }
+      setMoveStatus(message);
+      return;
+    }
+
+    setSelection({});
+    setMoveStatus(null);
+    if (selectedPathUpdate) {
+      onFileRenamed?.(selectedPathUpdate.from, selectedPathUpdate.to);
+    }
+    await fetchTree();
+  }
+
   function renderTree(nodes: FileNode[], depth = 0): React.ReactNode {
     return nodes.map((node) => {
       if (node.type === "folder") {
+        const item: MoveSelection = {
+          path: normalizeFolderPath(node.path),
+          type: "folder",
+        };
+        const disabled = isMovementDisabled(item, globalRunningScript);
         return (
           <FolderItem
             key={node.path}
@@ -152,6 +242,24 @@ export default function FileExplorer({
             onDelete={() => void handleDeleteFolder(node.path)}
             onCreateScript={(parentPath) => openScriptDialog(parentPath)}
             onCreateFolder={(parentPath) => openFolderDialog(parentPath)}
+            isSelectionChecked={Boolean(selection[selectionKey(item)])}
+            isSelectionDisabled={disabled}
+            onSelectionChange={(checked) => handleSelectionChange(item, checked)}
+            isDragEnabled
+            isDragDisabled={disabled}
+            isDropActive={dropTarget === normalizeFolderPath(node.path)}
+            onRowDragStart={() => handleDragStart(item)}
+            onRowDragOver={() => setDropTarget(normalizeFolderPath(node.path))}
+            onRowDragLeave={() =>
+              setDropTarget((current) =>
+                current === normalizeFolderPath(node.path) ? null : current
+              )
+            }
+            onRowDrop={() => void handleDropOnFolder(node.path)}
+            onRowDragEnd={() => {
+              dragSourceRef.current = null;
+              setDropTarget(null);
+            }}
           >
             {node.children && node.children.length > 0
               ? renderTree(node.children, depth + 1)
@@ -163,6 +271,8 @@ export default function FileExplorer({
           </FolderItem>
         );
       }
+      const item: MoveSelection = { path: node.path, type: "file" };
+      const disabled = isMovementDisabled(item, globalRunningScript);
       return (
         <FileItem
           key={node.path}
@@ -173,6 +283,16 @@ export default function FileExplorer({
           onClick={() => onSelectFile(node.path)}
           onDelete={() => void handleDeleteFile(node.path)}
           onRename={(newPath) => handleRenameFile(node.path, newPath)}
+          isSelectionChecked={Boolean(selection[selectionKey(item)])}
+          isSelectionDisabled={disabled}
+          onSelectionChange={(checked) => handleSelectionChange(item, checked)}
+          isDragEnabled
+          isDragDisabled={disabled}
+          onRowDragStart={() => handleDragStart(item)}
+          onRowDragEnd={() => {
+            dragSourceRef.current = null;
+            setDropTarget(null);
+          }}
         />
       );
     });
@@ -224,6 +344,14 @@ export default function FileExplorer({
             className="h-7 w-full rounded-md bg-panel pl-7 pr-2 font-mono text-xs"
           />
         </label>
+        {moveStatus && (
+          <p
+            role="status"
+            className="mt-1 truncate font-mono text-[10px] text-destructive"
+          >
+            {moveStatus}
+          </p>
+        )}
       </div>
 
       <ScrollArea
@@ -250,6 +378,86 @@ export default function FileExplorer({
       </ScrollArea>
     </div>
   );
+}
+
+function normalizeFolderPath(path: string): string {
+  return path.replace(/\/+$/, "");
+}
+
+function selectionKey(item: MoveSelection): string {
+  return `${item.type}:${item.path}`;
+}
+
+function flattenSelectionKeys(nodes: FileNode[]): string[] {
+  const keys: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "folder") {
+      keys.push(selectionKey({ path: normalizeFolderPath(node.path), type: "folder" }));
+      keys.push(...flattenSelectionKeys(node.children ?? []));
+    } else {
+      keys.push(selectionKey({ path: node.path, type: "file" }));
+    }
+  }
+  return keys;
+}
+
+function isMovementDisabled(
+  item: MoveSelection,
+  runningScript: string | null
+): boolean {
+  if (!runningScript) return false;
+  if (item.type === "file") return item.path === runningScript;
+  return runningScript.startsWith(`${item.path.replace(/\/+$/, "")}/`);
+}
+
+function pruneNestedSelections(items: MoveSelection[]): MoveSelection[] {
+  const selectedFolders = items
+    .filter((item) => item.type === "folder")
+    .map((item) => `${item.path.replace(/\/+$/, "")}/`);
+
+  return items.filter((item) => {
+    if (item.type === "folder") return true;
+    return !selectedFolders.some((prefix) => item.path.startsWith(prefix));
+  });
+}
+
+function computeMovedSelectedPath(
+  selectedFile: string | null,
+  items: MoveSelection[],
+  targetFolder: string
+): { from: string; to: string } | null {
+  if (!selectedFile) return null;
+
+  for (const item of items) {
+    if (item.type === "file" && item.path === selectedFile) {
+      return {
+        from: selectedFile,
+        to: joinPath(targetFolder, basename(item.path)),
+      };
+    }
+
+    if (item.type === "folder") {
+      const sourcePrefix = `${item.path.replace(/\/+$/, "")}/`;
+      if (selectedFile.startsWith(sourcePrefix)) {
+        return {
+          from: selectedFile,
+          to: `${joinPath(targetFolder, basename(item.path))}/${selectedFile.slice(sourcePrefix.length)}`,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function joinPath(folder: string, name: string): string {
+  return folder ? `${folder}/${name}` : name;
+}
+
+function basename(path: string): string {
+  const normalized = path.replace(/\/+$/, "");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1];
 }
 
 function encodeApiPath(path: string): string {
