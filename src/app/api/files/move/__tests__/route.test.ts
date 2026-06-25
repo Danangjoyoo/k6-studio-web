@@ -62,6 +62,160 @@ beforeEach(() => {
 });
 
 describe("POST /api/files/move", () => {
+  it("rejects missing request body fields before listing objects", async () => {
+    const response = await POST(jsonRequest({ items: [] }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "items and targetFolder are required",
+    });
+    expect(mockClient.listObjects).not.toHaveBeenCalled();
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty items array", async () => {
+    mockObjects([]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "items must be a non-empty array",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing item paths or malformed item types", async () => {
+    mockObjects([]);
+
+    const missingPathResponse = await POST(
+      jsonRequest({
+        items: [{ type: "file" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(missingPathResponse.status).toBe(400);
+    await expect(missingPathResponse.json()).resolves.toEqual({
+      error: "items must include path and type",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+
+    mockClient.copyObject.mockClear();
+    mockClient.removeObjects.mockClear();
+
+    const malformedTypeResponse = await POST(
+      jsonRequest({
+        items: [{ path: "src/a.ts", type: "script" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(malformedTypeResponse.status).toBe(400);
+    await expect(malformedTypeResponse.json()).resolves.toEqual({
+      error: "items must include path and type",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid path segments", async () => {
+    mockObjects([]);
+
+    const dotResponse = await POST(
+      jsonRequest({
+        items: [{ path: "src/./a.ts", type: "file" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(dotResponse.status).toBe(400);
+    await expect(dotResponse.json()).resolves.toEqual({
+      error: "Invalid path",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+
+    mockClient.copyObject.mockClear();
+    mockClient.removeObjects.mockClear();
+
+    const dotDotResponse = await POST(
+      jsonRequest({
+        items: [{ path: "src/../a.ts", type: "file" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(dotDotResponse.status).toBe(400);
+    await expect(dotDotResponse.json()).resolves.toEqual({
+      error: "Invalid path",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects .keep sentinels requested as files", async () => {
+    mockObjects(["empty/.keep"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "empty/.keep", type: "file" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cannot move folder sentinels as files",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing source file", async () => {
+    mockObjects(["other.ts"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "missing.ts", type: "file" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Source file not found: missing.ts",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing source folder", async () => {
+    mockObjects(["other.ts"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "missing", type: "folder" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Source folder not found: missing",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
   it("moves a single file to a folder and returns success", async () => {
     mockObjects(["src/a.ts"]);
 
