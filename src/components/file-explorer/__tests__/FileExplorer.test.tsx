@@ -392,6 +392,97 @@ describe("FileExplorer", () => {
     expect(within(afterRow).getByRole("checkbox", { name: "Select after.ts" })).toBeChecked();
   });
 
+  it("clears selected rows when they become active-run disabled", async () => {
+    mockFilesTree(scriptsTree());
+
+    const { rerender } = render(
+      <FileExplorer selectedFile={null} onSelectFile={jest.fn()} />
+    );
+
+    await ctrlClickRow("src/");
+    await ctrlClickRow("src/a.ts");
+
+    expect(screen.getByRole("checkbox", { name: "Select src" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select a.ts" })).toBeChecked();
+
+    rerender(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+        globalRunningScript="src/a.ts"
+      />
+    );
+
+    const folderRow = await rowByPath("src/");
+    const fileRow = await rowByPath("src/a.ts");
+    const folderCheckbox = within(folderRow).getByRole("checkbox", {
+      name: "Select src",
+    });
+    const fileCheckbox = within(fileRow).getByRole("checkbox", {
+      name: "Select a.ts",
+    });
+
+    await waitFor(() => {
+      expect(folderCheckbox).not.toBeChecked();
+      expect(fileCheckbox).not.toBeChecked();
+    });
+    expect(folderCheckbox).toBeDisabled();
+    expect(fileCheckbox).toBeDisabled();
+    expect(folderRow).not.toHaveAttribute("aria-selected", "true");
+    expect(fileRow).not.toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shift-click keeps an already selected target when the range anchor disappeared", async () => {
+    mockFetchSequence(
+      { json: { files: [], tree: scriptsTree() } },
+      { json: {} },
+      {
+        json: {
+          files: [],
+          tree: [
+            {
+              path: "src/",
+              name: "src",
+              type: "folder",
+              children: [{ path: "src/b.ts", name: "b.ts", type: "file" }],
+            },
+            {
+              path: "other/",
+              name: "other",
+              type: "folder",
+              children: [
+                { path: "other/c.ts", name: "c.ts", type: "file" },
+              ],
+            },
+            { path: "dest/", name: "dest", type: "folder", children: [] },
+          ],
+        },
+      }
+    );
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await ctrlClickRow("src/b.ts");
+    await ctrlClickRow("src/a.ts");
+
+    fireEvent.click(
+      within(await rowByPath("src/a.ts")).getByRole("button", {
+        name: "Delete script",
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
+    });
+
+    const targetRow = await rowByPath("src/b.ts");
+    expect(within(targetRow).getByRole("checkbox", { name: "Select b.ts" })).toBeChecked();
+
+    fireEvent.click(targetRow, { shiftKey: true });
+
+    expect(within(targetRow).getByRole("checkbox", { name: "Select b.ts" })).toBeChecked();
+  });
+
   it("dragging a selected row posts all selected items to the target folder", async () => {
     moveFetchSequence(scriptsTree());
 

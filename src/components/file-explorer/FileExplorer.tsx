@@ -232,8 +232,16 @@ export default function FileExplorer({
     const startKey = lastSelectionKey ?? itemKey;
     const startIndex = visibleMoveRows.findIndex((row) => row.key === startKey);
     const endIndex = visibleMoveRows.findIndex((row) => row.key === itemKey);
-    if (startIndex === -1 || endIndex === -1) {
-      toggleMoveSelection(item);
+    if (endIndex === -1) {
+      return;
+    }
+    if (startIndex === -1) {
+      setMoveStatus(null);
+      setLastSelectionKey(itemKey);
+      setSelection((current) => ({
+        ...current,
+        [itemKey]: item,
+      }));
       return;
     }
 
@@ -442,11 +450,45 @@ export default function FileExplorer({
   }
 
   const filteredTree = filterTree(tree, query);
+  const allMoveRows = useMemo(
+    () =>
+      collectVisibleMoveRows(
+        tree,
+        new Set(flattenFolderPaths(tree)),
+        globalRunningScript
+      ),
+    [tree, globalRunningScript]
+  );
+  const allMoveRowsByKey = useMemo(
+    () => new Map(allMoveRows.map((row) => [row.key, row])),
+    [allMoveRows]
+  );
   const visibleMoveRows = useMemo(
     () => collectVisibleMoveRows(filteredTree, expandedFolders, globalRunningScript),
     [filteredTree, expandedFolders, globalRunningScript]
   );
   const showSelectionControls = Object.keys(selection).length > 0;
+
+  useEffect(() => {
+    setSelection((current) => {
+      let changed = false;
+      const next: Record<string, MoveSelection> = {};
+      for (const [key, item] of Object.entries(current)) {
+        const row = allMoveRowsByKey.get(key);
+        if (!row || row.disabled) {
+          changed = true;
+          continue;
+        }
+        next[key] = item;
+      }
+      return changed ? next : current;
+    });
+    setLastSelectionKey((current) => {
+      if (!current) return current;
+      const row = allMoveRowsByKey.get(current);
+      return row && !row.disabled ? current : null;
+    });
+  }, [allMoveRowsByKey]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
