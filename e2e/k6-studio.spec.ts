@@ -71,6 +71,10 @@ async function createFolder(page: Page, name: string) {
   await expect(folderRow(page, `${name}/`)).toBeVisible({ timeout: 5000 });
 }
 
+async function searchFiles(page: Page, query: string) {
+  await page.getByRole("searchbox", { name: /search scripts/i }).fill(query);
+}
+
 async function selectFile(page: Page, name: string, contentMarker?: string) {
   const expectedPathname = `/api/files/${encodeApiPath(name)}`;
   const fileLoad = page.waitForResponse((response) => {
@@ -129,6 +133,11 @@ test.describe("k6 Studio E2E", () => {
     await expect(fileRow(page, `${folder}/nested.ts`)).toBeVisible({
       timeout: 8000,
     });
+    await searchFiles(page, "nested");
+    await expect(fileRow(page, `${folder}/nested.ts`)).toBeVisible({
+      timeout: 8000,
+    });
+    await expect(folderRow(page, `${folder}/`)).toBeVisible();
   });
 
   test("double-click renames a script", async ({ page }) => {
