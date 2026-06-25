@@ -508,14 +508,9 @@ test.describe("k6 Studio E2E", () => {
     await expect(runningMoveControl).toHaveCSS("opacity", "1");
     await expect(runningMoveControl).not.toHaveCSS("width", "0px");
     await expect(runningMoveCheckbox).toBeDisabled();
+    await expect(fileRow(page, script)).toHaveAttribute("draggable", "false");
     await expectNoMoveRequestDuring(page, async () => {
-      try {
-        await fileRow(page, script).dragTo(folderRow(page, `${folder}/`), {
-          timeout: 2000,
-        });
-      } catch {
-        // A disabled drag source may reject before any browser drag events fire.
-      }
+      await dragWithMouse(page, fileRow(page, script), folderRow(page, `${folder}/`));
     });
     await expect(fileRow(page, script)).toBeVisible();
     await expect(fileRow(page, `${folder}/${script}`)).toHaveCount(0);
