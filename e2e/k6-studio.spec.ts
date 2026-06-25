@@ -13,6 +13,8 @@ import {
   REPORTS_BUCKET,
 } from "../src/lib/minio";
 
+const DEFAULT_NAMESPACE = "default";
+
 const SHORT_K6_SCRIPT = (marker: string) => `import { sleep } from 'k6';
 
 // ${marker}
@@ -76,6 +78,45 @@ async function waitForApp(page: Page) {
   await waitForRunner(page, 0);
 }
 
+async function waitForFilesResponse(
+  page: Page,
+  namespace = DEFAULT_NAMESPACE
+) {
+  await page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "GET" &&
+      url.pathname === "/api/files" &&
+      url.searchParams.get("namespace") === namespace
+    );
+  });
+}
+
+async function switchNamespace(page: Page, namespace: string) {
+  const filesLoaded = waitForFilesResponse(page, namespace);
+  await page.getByLabel("Namespace", { exact: true }).selectOption(namespace);
+  await filesLoaded;
+}
+
+async function createNamespace(page: Page, namespace: string) {
+  const createButton = page.getByRole("button", { name: "Create namespace" });
+  await expect(createButton).toBeVisible({ timeout: 10_000 });
+  const namespaceCreated = page.waitForResponse((response) => {
+    return (
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/namespaces"
+    );
+  });
+  await createButton.click();
+  await page.getByLabel("Namespace name").fill(namespace);
+  await page.getByRole("button", { name: "Create" }).click();
+  const response = await namespaceCreated;
+  expect(response.ok()).toBeTruthy();
+  await expect(page.getByLabel("Namespace", { exact: true })).toHaveValue(
+    namespace
+  );
+}
+
 async function createScript(page: Page, name: string) {
   await page.getByRole("button", { name: /new script/i }).first().click();
   await page.getByPlaceholder("my-test.ts").fill(name);
@@ -83,10 +124,14 @@ async function createScript(page: Page, name: string) {
   await expect(fileRow(page, name)).toBeVisible({ timeout: 8000 });
 }
 
-async function createScriptViaApi(page: Page, name: string) {
+async function createScriptViaApi(
+  page: Page,
+  name: string,
+  namespace = DEFAULT_NAMESPACE
+) {
   const marker = `e2e-marker-${Date.now()}`;
   const response = await page.request.post("/api/files", {
-    data: { name, content: SHORT_K6_SCRIPT(marker) },
+    data: { namespace, name, content: SHORT_K6_SCRIPT(marker) },
   });
   expect(response.ok()).toBeTruthy();
   await page.reload();
@@ -97,17 +142,22 @@ async function createScriptViaApi(page: Page, name: string) {
 async function createScriptViaApiWithContent(
   page: Page,
   name: string,
-  content: string
+  content: string,
+  namespace = DEFAULT_NAMESPACE
 ) {
   const response = await page.request.post("/api/files", {
-    data: { name, content },
+    data: { namespace, name, content },
   });
   expect(response.ok()).toBeTruthy();
   await page.reload();
   await expect(fileRow(page, name)).toBeVisible({ timeout: 8000 });
 }
 
-async function createReportFixture(page: Page, reportName: string) {
+async function createReportFixture(
+  page: Page,
+  reportName: string,
+  namespace = DEFAULT_NAMESPACE
+) {
   const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? page.url();
   const hostname = new URL(baseURL).hostname;
   const isLocalApp =
@@ -129,7 +179,7 @@ async function createReportFixture(page: Page, reportName: string) {
   const html = `<!doctype html><html><body><h1>deterministic-report-fixture</h1><p>${reportName}</p></body></html>`;
   await client.putObject(
     REPORTS_BUCKET,
-    reportName,
+    `${namespace}/${reportName}`,
     Readable.from([html])
   );
 }
@@ -145,7 +195,8 @@ async function dragFileToFolderAndWait(
   page: Page,
   filePath: string,
   folderPath: string,
-  expectedOk = true
+  expectedOk = true,
+  namespace = DEFAULT_NAMESPACE
 ) {
   const source = fileRow(page, filePath);
   const target = folderRow(page, `${folderPath}/`);
@@ -175,6 +226,7 @@ async function dragFileToFolderAndWait(
   }
 
   expect(response.request().postDataJSON()).toEqual({
+    namespace,
     items: [{ path: filePath, type: "file" }],
     targetFolder: folderPath,
   });
@@ -264,12 +316,19 @@ async function searchFiles(page: Page, query: string) {
   await page.getByRole("searchbox", { name: /search scripts/i }).fill(query);
 }
 
-async function selectFile(page: Page, name: string, contentMarker?: string) {
+async function selectFile(
+  page: Page,
+  name: string,
+  contentMarker?: string,
+  namespace = DEFAULT_NAMESPACE
+) {
   const expectedPathname = `/api/files/${encodeApiPath(name)}`;
   const fileLoad = page.waitForResponse((response) => {
+    const url = new URL(response.url());
     return (
       response.request().method() === "GET" &&
-      new URL(response.url()).pathname === expectedPathname
+      url.pathname === expectedPathname &&
+      url.searchParams.get("namespace") === namespace
     );
   });
 
@@ -327,6 +386,24 @@ test.describe("k6 Studio E2E", () => {
       timeout: 8000,
     });
     await expect(folderRow(page, `${folder}/`)).toBeVisible();
+  });
+
+  test("namespace workspace isolates scripts between namespaces", async ({ page }) => {
+    await waitForApp(page);
+    const stamp = Date.now();
+    const namespace = `team-e2e-${stamp}`;
+    const script = `namespace-smoke-${stamp}.ts`;
+
+    await createNamespace(page, namespace);
+    await createScript(page, script);
+    await expect(fileRow(page, script)).toBeVisible();
+
+    await switchNamespace(page, DEFAULT_NAMESPACE);
+    await expect(fileRow(page, script)).toHaveCount(0);
+
+    await switchNamespace(page, namespace);
+    await expect(fileRow(page, script)).toBeVisible({ timeout: 8000 });
+    await selectFile(page, script, undefined, namespace);
   });
 
   test("double-click renames a script", async ({ page }) => {
