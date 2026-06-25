@@ -74,7 +74,10 @@ export default function AppHeader({
         </div>
 
         {isRunning && runningScript && (
-          <span className="max-w-[160px] truncate rounded border border-border bg-panel-raised px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span
+            title={runningScript}
+            className="max-w-[min(52vw,720px)] truncate rounded border border-border bg-panel-raised px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
+          >
             {runningScript}
           </span>
         )}

@@ -26,4 +26,13 @@ describe("AppHeader", () => {
     );
     expect(screen.getByText("load.ts")).toBeInTheDocument();
   });
+
+  it("uses a wide responsive badge for the running script path", () => {
+    const runningScript = "folder/deeply/nested/load-test-script.ts";
+    render(<AppHeader activeRunners={1} runningScript={runningScript} />);
+
+    const scriptBadge = screen.getByText(runningScript);
+    expect(scriptBadge).toHaveAttribute("title", runningScript);
+    expect(scriptBadge.className).toContain("max-w-[min(52vw,720px)]");
+  });
 });
