@@ -15,6 +15,7 @@ export function getK6RunEnv(reportPath: string): Record<string, string> {
     K6_WEB_DASHBOARD_HOST: process.env.K6_WEB_DASHBOARD_HOST ?? "0.0.0.0",
     K6_WEB_DASHBOARD_PORT: port,
     K6_WEB_DASHBOARD_OPEN: "false",
+    K6_WEB_DASHBOARD_PERIOD: process.env.K6_WEB_DASHBOARD_PERIOD ?? "1s",
     K6_WEB_DASHBOARD_EXPORT: reportPath,
   };
 }

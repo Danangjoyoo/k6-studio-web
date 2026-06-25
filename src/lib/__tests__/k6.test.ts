@@ -63,6 +63,18 @@ describe("k6", () => {
     expect(env.K6_WEB_DASHBOARD_EXPORT).toBe("/tmp/report.html");
   });
 
+  it("getK6RunEnv sets a fast dashboard update period by default", () => {
+    const env = getK6RunEnv("/tmp/report.html");
+    expect(env.K6_WEB_DASHBOARD_PERIOD).toBe("1s");
+  });
+
+  it("getK6RunEnv respects K6_WEB_DASHBOARD_PERIOD env override", () => {
+    process.env.K6_WEB_DASHBOARD_PERIOD = "2s";
+    const env = getK6RunEnv("/tmp/report.html");
+    expect(env.K6_WEB_DASHBOARD_PERIOD).toBe("2s");
+    delete process.env.K6_WEB_DASHBOARD_PERIOD;
+  });
+
   it("getK6RunEnv respects K6_WEB_DASHBOARD_HOST env override", () => {
     process.env.K6_WEB_DASHBOARD_HOST = "127.0.0.1";
     const env = getK6RunEnv("/tmp/report.html");
