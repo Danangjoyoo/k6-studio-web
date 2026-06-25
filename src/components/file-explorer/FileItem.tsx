@@ -100,15 +100,15 @@ export default function FileItem({
   }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
-    if (isDropDisabled) return;
+    if (isDropDisabled || !onRowDragOver) return;
     e.preventDefault();
-    onRowDragOver?.(path, e);
+    onRowDragOver(path, e);
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
-    if (isDropDisabled) return;
+    if (isDropDisabled || !onRowDrop) return;
     e.preventDefault();
-    onRowDrop?.(path, e);
+    onRowDrop(path, e);
   }
 
   return (
@@ -119,9 +119,6 @@ export default function FileItem({
         data-path={path}
         data-selected={isSelected || isSelectionChecked ? "true" : undefined}
         data-drop-active={isDropActive ? "true" : undefined}
-        aria-disabled={
-          isSelectionDisabled || isDragDisabled || isDropDisabled ? true : undefined
-        }
         draggable={isDragEnabled && !isDragDisabled}
         tabIndex={0}
         style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
@@ -152,20 +149,24 @@ export default function FileItem({
       >
         <div className="flex min-w-0 items-center gap-2">
           {onSelectionChange && (
-            <input
-              type="checkbox"
-              aria-label={`Select ${name}`}
-              checked={Boolean(isSelectionChecked)}
-              aria-disabled={isSelectionDisabled}
-              readOnly={isSelectionDisabled}
-              className={cn(
-                "h-3.5 w-3.5 shrink-0 rounded border-border accent-primary",
-                isSelectionDisabled && "cursor-not-allowed opacity-50"
-              )}
+            <span
+              className="flex h-4 w-4 shrink-0 items-center justify-center"
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
-              onChange={handleSelectionChange}
-            />
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                aria-label={`Select ${name}`}
+                checked={Boolean(isSelectionChecked)}
+                disabled={isSelectionDisabled}
+                className={cn(
+                  "h-3.5 w-3.5 rounded border-border accent-primary",
+                  isSelectionDisabled && "cursor-not-allowed opacity-50"
+                )}
+                onChange={handleSelectionChange}
+              />
+            </span>
           )}
           <FileCode2 className="h-3.5 w-3.5 shrink-0 text-primary/80" />
           {editing ? (

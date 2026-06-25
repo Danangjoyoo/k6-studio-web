@@ -111,6 +111,33 @@ describe("file explorer row items", () => {
     expect(onRowDrop).toHaveBeenCalledWith("src/", expect.any(Object));
   });
 
+  it("rows without drop callbacks do not cancel drag over or drop events", () => {
+    renderFileItem();
+    renderFolderItem();
+
+    const fileRow = screen.getByTestId("sidebar-file-item");
+    const folderRow = screen.getByTestId("sidebar-folder-item");
+    const fileDragOver = new Event("dragover", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const fileDrop = new Event("drop", { bubbles: true, cancelable: true });
+    const folderDragOver = new Event("dragover", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const folderDrop = new Event("drop", { bubbles: true, cancelable: true });
+
+    expect(fireEvent(fileRow, fileDragOver)).toBe(true);
+    expect(fileDragOver.defaultPrevented).toBe(false);
+    expect(fireEvent(fileRow, fileDrop)).toBe(true);
+    expect(fileDrop.defaultPrevented).toBe(false);
+    expect(fireEvent(folderRow, folderDragOver)).toBe(true);
+    expect(folderDragOver.defaultPrevented).toBe(false);
+    expect(fireEvent(folderRow, folderDrop)).toBe(true);
+    expect(folderDrop.defaultPrevented).toBe(false);
+  });
+
   it("disabled selection and drag do not block normal file selection or folder expand", () => {
     const onClick = jest.fn();
     const onSelectionChange = jest.fn();
@@ -130,7 +157,7 @@ describe("file explorer row items", () => {
     fireEvent.dragStart(fileRow);
     fireEvent.click(fileRow);
 
-    expect(fileRow).toHaveAttribute("aria-disabled", "true");
+    expect(fileRow).not.toHaveAttribute("aria-disabled");
     expect(onSelectionChange).not.toHaveBeenCalled();
     expect(onRowDragStart).not.toHaveBeenCalled();
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -150,6 +177,66 @@ describe("file explorer row items", () => {
     expect(screen.queryByText("child content")).not.toBeInTheDocument();
   });
 
+  it("disabled checkboxes are native disabled and keyboard-safe", () => {
+    const onClick = jest.fn();
+    const onSelectionChange = jest.fn();
+    renderFileItem({
+      onClick,
+      isSelectionChecked: false,
+      isSelectionDisabled: true,
+      onSelectionChange,
+    });
+
+    const fileRow = screen.getByTestId("sidebar-file-item");
+    const fileCheckbox = within(fileRow).getByRole("checkbox", {
+      name: "Select login.ts",
+    });
+    fireEvent.click(fileCheckbox);
+    fireEvent.keyDown(fileCheckbox, { key: " ", code: "Space" });
+    fireEvent.keyDown(fileCheckbox, { key: "Enter", code: "Enter" });
+
+    expect(fileCheckbox).toBeDisabled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+
+    renderFolderItem({
+      defaultOpen: true,
+      isSelectionChecked: false,
+      isSelectionDisabled: true,
+      onSelectionChange,
+    });
+
+    const folderRow = screen.getByTestId("sidebar-folder-item");
+    const folderCheckbox = within(folderRow).getByRole("checkbox", {
+      name: "Select src",
+    });
+    fireEvent.keyDown(folderCheckbox, { key: " ", code: "Space" });
+    fireEvent.keyDown(folderCheckbox, { key: "Enter", code: "Enter" });
+
+    expect(folderCheckbox).toBeDisabled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(screen.getByText("child content")).toBeInTheDocument();
+  });
+
+  it("enabled checkbox keyboard events do not trigger row primary actions", () => {
+    const onClick = jest.fn();
+    const onSelectionChange = jest.fn();
+    renderFileItem({
+      onClick,
+      isSelectionChecked: false,
+      onSelectionChange,
+    });
+
+    const fileRow = screen.getByTestId("sidebar-file-item");
+    const fileCheckbox = within(fileRow).getByRole("checkbox", {
+      name: "Select login.ts",
+    });
+    fireEvent.keyDown(fileCheckbox, { key: " ", code: "Space" });
+    fireEvent.keyDown(fileCheckbox, { key: "Enter", code: "Enter" });
+
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it("existing action buttons keep stopping row interactions", () => {
     const onFileClick = jest.fn();
     const onFileDelete = jest.fn();
@@ -160,5 +247,33 @@ describe("file explorer row items", () => {
 
     expect(onFileDelete).toHaveBeenCalledTimes(1);
     expect(onFileClick).not.toHaveBeenCalled();
+  });
+
+  it("folder action buttons call callbacks without toggling expansion", () => {
+    const onCreateScript = jest.fn();
+    const onCreateFolder = jest.fn();
+    const onDelete = jest.fn();
+    renderFolderItem({
+      defaultOpen: true,
+      onCreateScript,
+      onCreateFolder,
+      onDelete,
+    });
+
+    const folderRow = screen.getByTestId("sidebar-folder-item");
+    fireEvent.click(
+      within(folderRow).getByRole("button", { name: "New script here" })
+    );
+    fireEvent.click(
+      within(folderRow).getByRole("button", { name: "New folder here" })
+    );
+    fireEvent.click(
+      within(folderRow).getByRole("button", { name: "Delete folder" })
+    );
+
+    expect(onCreateScript).toHaveBeenCalledWith("src/");
+    expect(onCreateFolder).toHaveBeenCalledWith("src/");
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("child content")).toBeInTheDocument();
   });
 });
