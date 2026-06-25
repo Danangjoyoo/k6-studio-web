@@ -496,9 +496,16 @@ test.describe("k6 Studio E2E", () => {
     await page.getByRole("button", { name: /run test/i }).click();
     await waitForRunner(page, 1, 10000);
 
-    await expect(
-      fileRow(page, script).locator("input[type='checkbox']")
-    ).toBeDisabled();
+    const runningMoveControl = fileRow(page, script).getByTestId(
+      "row-selection-control"
+    );
+    await expect(runningMoveControl).toHaveCSS("opacity", "0");
+    await fileRow(page, script).hover();
+    const runningMoveCheckbox = fileRow(page, script).locator(
+      "input[type='checkbox']"
+    );
+    await expect(runningMoveControl).toHaveCSS("opacity", "1");
+    await expect(runningMoveCheckbox).toBeDisabled();
     await expectNoMoveRequestDuring(page, async () => {
       try {
         await fileRow(page, script).dragTo(folderRow(page, `${folder}/`), {
