@@ -24,6 +24,15 @@ interface BuildMovePlanInput {
   activeRunningScript?: string | null;
 }
 
+interface BuildRenamePlanInput {
+  from: string;
+  to: string;
+  type: "file" | "folder";
+  existingScriptObjectKeys: string[];
+  existingReportObjectKeys: string[];
+  activeRunningScript?: string | null;
+}
+
 interface NormalizedMoveItem extends MoveItem {
   path: string;
   name: string;
@@ -106,6 +115,82 @@ export function buildMovePlan(input: BuildMovePlanInput): MovePlan {
     }
 
     const destinationPrefix = folderPrefix(destinationFolder);
+    for (const sourceKey of folderObjects) {
+      const destination = `${destinationPrefix}${sourceKey.slice(sourcePrefix.length)}`;
+      scriptObjectMoves.push({ from: sourceKey, to: destination });
+      if (!sourceKey.endsWith(KEEP_SUFFIX)) {
+        scriptFilePathMoves.push({ from: sourceKey, to: destination });
+      }
+    }
+  }
+
+  const reportObjectMoves = buildReportMoves(
+    scriptFilePathMoves,
+    reportKeys,
+    reportKeySet
+  );
+
+  return { scriptObjectMoves, reportObjectMoves };
+}
+
+export function buildRenamePlan(input: BuildRenamePlanInput): MovePlan {
+  const from =
+    input.type === "folder"
+      ? normalizeFolderPath(input.from)
+      : normalizeObjectPath(input.from, "from");
+  const to =
+    input.type === "folder"
+      ? normalizeFolderPath(input.to)
+      : normalizeObjectPath(input.to, "to");
+  const scriptKeys = input.existingScriptObjectKeys.map(normalizeObjectKey);
+  const reportKeys = input.existingReportObjectKeys.map(normalizeObjectKey);
+  const scriptKeySet = new Set(scriptKeys);
+  const reportKeySet = new Set(reportKeys);
+  const runningScript = input.activeRunningScript
+    ? normalizeObjectPath(input.activeRunningScript, "active running script")
+    : null;
+  const item: NormalizedMoveItem = {
+    path: from,
+    type: input.type,
+    name: baseName(from),
+  };
+
+  rejectRunningScriptMove(item, runningScript);
+
+  const scriptObjectMoves: ObjectMove[] = [];
+  const scriptFilePathMoves: ObjectMove[] = [];
+
+  if (input.type === "file") {
+    if (from.endsWith(KEEP_SUFFIX)) {
+      throw new MoveConflictError("Cannot move folder sentinels as files", 400);
+    }
+    if (!scriptKeySet.has(from)) {
+      throw new MoveConflictError(`Source file not found: ${from}`, 404);
+    }
+    if (destinationPathExists(to, scriptKeys)) {
+      throw new MoveConflictError(`Destination already exists: ${to}`, 409);
+    }
+
+    scriptObjectMoves.push({ from, to });
+    scriptFilePathMoves.push({ from, to });
+  } else {
+    if (isFolderInsideItself(from, to)) {
+      throw new MoveConflictError(
+        "Cannot move a folder into itself or its descendants",
+        400
+      );
+    }
+
+    const sourcePrefix = folderPrefix(from);
+    const folderObjects = scriptKeys.filter((key) => key.startsWith(sourcePrefix));
+    if (folderObjects.length === 0) {
+      throw new MoveConflictError(`Source folder not found: ${from}`, 404);
+    }
+    if (destinationPathExists(to, scriptKeys)) {
+      throw new MoveConflictError(`Destination already exists: ${to}`, 409);
+    }
+
+    const destinationPrefix = folderPrefix(to);
     for (const sourceKey of folderObjects) {
       const destination = `${destinationPrefix}${sourceKey.slice(sourcePrefix.length)}`;
       scriptObjectMoves.push({ from: sourceKey, to: destination });
@@ -256,6 +341,10 @@ function targetNameExists(
   scriptKeys: string[]
 ): boolean {
   const destination = joinObjectPath(targetFolder, name);
+  return destinationPathExists(destination, scriptKeys);
+}
+
+function destinationPathExists(destination: string, scriptKeys: string[]): boolean {
   const destinationFolderPrefix = folderPrefix(destination);
   return scriptKeys.some(
     (key) => key === destination || key.startsWith(destinationFolderPrefix)
