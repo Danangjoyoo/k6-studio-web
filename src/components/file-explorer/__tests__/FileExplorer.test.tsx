@@ -267,11 +267,14 @@ describe("FileExplorer", () => {
     const fileRow = await rowByPath("src/a.ts");
     const folderRow = await rowByPath("other/");
 
+    expect(screen.getByText("c.ts")).toBeInTheDocument();
+
     fireEvent.click(fileRow, { ctrlKey: true });
     fireEvent.click(folderRow, { ctrlKey: true });
 
     expect(within(fileRow).getByRole("checkbox", { name: "Select a.ts" })).toBeChecked();
     expect(within(folderRow).getByRole("checkbox", { name: "Select other" })).toBeChecked();
+    expect(screen.getByText("c.ts")).toBeInTheDocument();
     expect(onSelectFile).not.toHaveBeenCalled();
   });
 
