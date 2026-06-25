@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMinioClient, SCRIPTS_BUCKET, REPORTS_BUCKET, ensureBuckets } from "@/lib/minio";
+import { getMinioClient, SCRIPTS_BUCKET, ensureBuckets } from "@/lib/minio";
 import { buildTree, KEEP_SUFFIX, type FileNode } from "@/lib/files-tree";
 
 export type { FileNode };
