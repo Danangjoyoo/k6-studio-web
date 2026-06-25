@@ -123,7 +123,24 @@ function lastJsonBody(url: string) {
 }
 
 async function selectCheckbox(name: string) {
-  fireEvent.click(await screen.findByRole("checkbox", { name }));
+  const checkbox = await screen.findByRole("checkbox", { name });
+  const row = checkbox.closest("[data-testid='sidebar-file-item'],[data-testid='sidebar-folder-item']");
+  if (row) fireEvent.focus(row);
+  fireEvent.click(checkbox);
+}
+
+async function rowByPath(rowPath: string) {
+  await screen.findByText(rowPath.split("/").filter(Boolean).pop() ?? rowPath);
+  const testId = rowPath.endsWith("/") ? "sidebar-folder-item" : "sidebar-file-item";
+  const row = screen
+    .getAllByTestId(testId)
+    .find((item) => item.getAttribute("data-path") === rowPath);
+  if (!row) throw new Error(`row not found: ${rowPath}`);
+  return row;
+}
+
+async function ctrlClickRow(rowPath: string) {
+  fireEvent.click(await rowByPath(rowPath), { ctrlKey: true });
 }
 
 async function dragRowToFolder(rowPath: string, folderPath: string) {
@@ -224,25 +241,79 @@ describe("FileExplorer", () => {
     );
   });
 
-  it("renders row checkboxes and selects multiple items without selecting file rows", async () => {
+  it("ctrl-click toggles move selection without selecting file rows", async () => {
     const onSelectFile = jest.fn();
     mockFilesTree(scriptsTree());
 
     render(<FileExplorer selectedFile={null} onSelectFile={onSelectFile} />);
 
-    const fileCheckbox = await screen.findByRole("checkbox", {
-      name: "Select a.ts",
-    });
-    const folderCheckbox = await screen.findByRole("checkbox", {
-      name: "Select other",
-    });
+    const fileRow = await rowByPath("src/a.ts");
+    const folderRow = await rowByPath("other/");
 
-    fireEvent.click(fileCheckbox);
-    fireEvent.click(folderCheckbox);
+    fireEvent.click(fileRow, { ctrlKey: true });
+    fireEvent.click(folderRow, { ctrlKey: true });
 
-    expect(fileCheckbox).toBeChecked();
-    expect(folderCheckbox).toBeChecked();
+    expect(within(fileRow).getByRole("checkbox", { name: "Select a.ts" })).toBeChecked();
+    expect(within(folderRow).getByRole("checkbox", { name: "Select other" })).toBeChecked();
     expect(onSelectFile).not.toHaveBeenCalled();
+  });
+
+  it("shift-click selects a visible range and drag posts selected files", async () => {
+    moveFetchSequence(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const first = await rowByPath("src/a.ts");
+    const second = await rowByPath("src/b.ts");
+    fireEvent.click(first, { ctrlKey: true });
+    fireEvent.click(second, { shiftKey: true });
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastFetchBody()).toEqual({
+      items: [
+        { path: "src/a.ts", type: "file" },
+        { path: "src/b.ts", type: "file" },
+      ],
+      targetFolder: "dest",
+    });
+  });
+
+  it("space toggles move selection for a focused file row", async () => {
+    mockFilesTree(scriptsTree());
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const fileRow = await rowByPath("src/a.ts");
+    fireEvent.keyDown(fileRow, { key: " ", code: "Space" });
+
+    expect(within(fileRow).getByRole("checkbox", { name: "Select a.ts" })).toBeChecked();
+  });
+
+  it("shift-click range skips running-script rows", async () => {
+    mockFilesTree(activeRunTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+        globalRunningScript="suite/run.ts"
+      />
+    );
+
+    const suiteRow = await rowByPath("suite/");
+    const otherRow = await rowByPath("other.ts");
+    fireEvent.click(suiteRow, { ctrlKey: true });
+    fireEvent.click(otherRow, { shiftKey: true });
+
+    expect(within(suiteRow).getByRole("checkbox", { name: "Select suite" })).toBeDisabled();
+    expect(within(screen.getByText("run.ts").closest("[data-testid='sidebar-file-item']") as HTMLElement).getByRole("checkbox", { name: "Select run.ts" })).toBeDisabled();
+    expect(within(otherRow).getByRole("checkbox", { name: "Select other.ts" })).toBeChecked();
   });
 
   it("dragging a selected row posts all selected items to the target folder", async () => {
@@ -250,8 +321,8 @@ describe("FileExplorer", () => {
 
     render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
 
-    await selectCheckbox("Select a.ts");
-    await selectCheckbox("Select other");
+    await ctrlClickRow("src/a.ts");
+    await ctrlClickRow("other/");
     await dragRowToFolder("src/a.ts", "dest/");
 
     await waitFor(() => {
@@ -281,8 +352,8 @@ describe("FileExplorer", () => {
       />
     );
 
-    await selectCheckbox("Select a.ts");
-    await selectCheckbox("Select other");
+    await ctrlClickRow("src/a.ts");
+    await ctrlClickRow("other/");
     await dragRowToFolder("src/a.ts", "dest/");
 
     await waitFor(() => {

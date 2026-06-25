@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileCode2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,6 +29,11 @@ type MoveSelectionType = "file" | "folder";
 interface MoveSelection {
   path: string;
   type: MoveSelectionType;
+}
+
+interface VisibleMoveRow extends MoveSelection {
+  key: string;
+  disabled: boolean;
 }
 
 const DEFAULT_SCRIPT = `// example script
@@ -63,6 +68,8 @@ export default function FileExplorer({
   const [folderDialogParent, setFolderDialogParent] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Record<string, MoveSelection>>({});
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
+  const [lastSelectionKey, setLastSelectionKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [moveStatus, setMoveStatus] = useState<string | null>(null);
   const dragSourceRef = useRef<MoveSelection | null>(null);
@@ -72,6 +79,13 @@ export default function FileExplorer({
     const data = (await res.json()) as { tree: FileNode[] };
     const nextTree = data.tree ?? [];
     setTree(nextTree);
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      for (const folderPath of flattenFolderPaths(nextTree)) {
+        next.add(folderPath);
+      }
+      return next;
+    });
     const validKeys = new Set(flattenSelectionKeys(nextTree));
     setSelection((current) =>
       Object.fromEntries(
@@ -189,6 +203,75 @@ export default function FileExplorer({
     });
   }
 
+  function toggleMoveSelection(item: MoveSelection) {
+    if (isMovementDisabled(item, globalRunningScript)) return;
+    const key = selectionKey(item);
+    setMoveStatus(null);
+    setLastSelectionKey(key);
+    setSelection((current) => {
+      const next = { ...current };
+      if (next[key]) delete next[key];
+      else next[key] = item;
+      return next;
+    });
+  }
+
+  function selectVisibleRange(item: MoveSelection) {
+    if (isMovementDisabled(item, globalRunningScript)) return;
+    const itemKey = selectionKey(item);
+    const startKey = lastSelectionKey ?? itemKey;
+    const startIndex = visibleMoveRows.findIndex((row) => row.key === startKey);
+    const endIndex = visibleMoveRows.findIndex((row) => row.key === itemKey);
+    if (startIndex === -1 || endIndex === -1) {
+      toggleMoveSelection(item);
+      return;
+    }
+
+    const [from, to] =
+      startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+    setMoveStatus(null);
+    setLastSelectionKey(itemKey);
+    setSelection((current) => {
+      const next = { ...current };
+      for (const row of visibleMoveRows.slice(from, to + 1)) {
+        if (row.disabled) continue;
+        next[row.key] = { path: row.path, type: row.type };
+      }
+      return next;
+    });
+  }
+
+  function handleRowSelectionIntent(
+    item: MoveSelection,
+    disabled: boolean,
+    event: React.MouseEvent<HTMLDivElement>,
+    primaryAction: () => void
+  ) {
+    if (event.shiftKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!disabled) selectVisibleRange(item);
+      return;
+    }
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!disabled) toggleMoveSelection(item);
+      return;
+    }
+    primaryAction();
+  }
+
+  function toggleFolderOpen(path: string) {
+    const folderPath = normalizeFolderPath(path);
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+  }
+
   function handleDragStart(item: MoveSelection) {
     dragSourceRef.current = item;
     setMoveStatus(null);
@@ -265,13 +348,20 @@ export default function FileExplorer({
           path: normalizeFolderPath(node.path),
           type: "folder",
         };
+        const folderPath = normalizeFolderPath(node.path);
         const disabled = isMovementDisabled(item, globalRunningScript);
+        const isOpen = expandedFolders.has(folderPath);
         return (
           <FolderItem
             key={node.path}
             name={node.name}
             path={node.path}
             depth={depth}
+            isOpen={isOpen}
+            onToggleOpen={() => toggleFolderOpen(node.path)}
+            onRowClick={(event) =>
+              handleRowSelectionIntent(item, disabled, event, () => toggleFolderOpen(node.path))
+            }
             onRename={(newPath) => handleRenameFolder(node.path.replace(/\/$/, ""), newPath)}
             onDelete={() => void handleDeleteFolder(node.path)}
             onCreateScript={(parentPath) => openScriptDialog(parentPath)}
@@ -279,6 +369,8 @@ export default function FileExplorer({
             isSelectionChecked={Boolean(selection[selectionKey(item)])}
             isSelectionDisabled={disabled}
             onSelectionChange={(checked) => handleSelectionChange(item, checked)}
+            onSelectionToggle={() => toggleMoveSelection(item)}
+            showSelectionControl={showSelectionControls}
             isDragEnabled
             isDragDisabled={disabled}
             isDropActive={dropTarget === normalizeFolderPath(node.path)}
@@ -295,10 +387,13 @@ export default function FileExplorer({
               setDropTarget(null);
             }}
           >
-            {node.children && node.children.length > 0
+            {isOpen && node.children && node.children.length > 0
               ? renderTree(node.children, depth + 1)
-              : (
-                <p className="py-1 font-mono text-[10px] text-muted-foreground" style={{ paddingLeft: `${1.5 + (depth + 1) * 1}rem` }}>
+              : isOpen && (
+                <p
+                  className="py-1 font-mono text-[10px] text-muted-foreground"
+                  style={{ paddingLeft: `${1.5 + (depth + 1) * 1}rem` }}
+                >
                   Empty folder
                 </p>
               )}
@@ -314,12 +409,16 @@ export default function FileExplorer({
           path={node.path}
           depth={depth}
           isSelected={selectedFile === node.path}
-          onClick={() => onSelectFile(node.path)}
+          onClick={(event) =>
+            handleRowSelectionIntent(item, disabled, event, () => onSelectFile(node.path))
+          }
           onDelete={() => void handleDeleteFile(node.path)}
           onRename={(newPath) => handleRenameFile(node.path, newPath)}
           isSelectionChecked={Boolean(selection[selectionKey(item)])}
           isSelectionDisabled={disabled}
           onSelectionChange={(checked) => handleSelectionChange(item, checked)}
+          onSelectionToggle={() => toggleMoveSelection(item)}
+          showSelectionControl={showSelectionControls}
           isDragEnabled
           isDragDisabled={disabled}
           onRowDragStart={() => handleDragStart(item)}
@@ -333,6 +432,11 @@ export default function FileExplorer({
   }
 
   const filteredTree = filterTree(tree, query);
+  const visibleMoveRows = useMemo(
+    () => collectVisibleMoveRows(filteredTree, expandedFolders, globalRunningScript),
+    [filteredTree, expandedFolders, globalRunningScript]
+  );
+  const showSelectionControls = Object.keys(selection).length > 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -440,6 +544,55 @@ function flattenSelectionKeys(nodes: FileNode[]): string[] {
     }
   }
   return keys;
+}
+
+function flattenFolderPaths(nodes: FileNode[]): string[] {
+  const paths: string[] = [];
+  for (const node of nodes) {
+    if (node.type !== "folder") continue;
+    const folderPath = normalizeFolderPath(node.path);
+    paths.push(folderPath);
+    paths.push(...flattenFolderPaths(node.children ?? []));
+  }
+  return paths;
+}
+
+function collectVisibleMoveRows(
+  nodes: FileNode[],
+  expandedFolders: Set<string>,
+  runningScript: string | null
+): VisibleMoveRow[] {
+  const rows: VisibleMoveRow[] = [];
+  for (const node of nodes) {
+    if (node.type === "folder") {
+      const item: MoveSelection = {
+        path: normalizeFolderPath(node.path),
+        type: "folder",
+      };
+      rows.push({
+        ...item,
+        key: selectionKey(item),
+        disabled: isMovementDisabled(item, runningScript),
+      });
+      if (expandedFolders.has(item.path)) {
+        rows.push(
+          ...collectVisibleMoveRows(
+            node.children ?? [],
+            expandedFolders,
+            runningScript
+          )
+        );
+      }
+    } else {
+      const item: MoveSelection = { path: node.path, type: "file" };
+      rows.push({
+        ...item,
+        key: selectionKey(item),
+        disabled: isMovementDisabled(item, runningScript),
+      });
+    }
+  }
+  return rows;
 }
 
 function isMovementDisabled(
