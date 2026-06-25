@@ -500,11 +500,13 @@ test.describe("k6 Studio E2E", () => {
       "row-selection-control"
     );
     await expect(runningMoveControl).toHaveCSS("opacity", "0");
+    await expect(runningMoveControl).toHaveCSS("width", "0px");
     await fileRow(page, script).hover();
     const runningMoveCheckbox = fileRow(page, script).locator(
       "input[type='checkbox']"
     );
     await expect(runningMoveControl).toHaveCSS("opacity", "1");
+    await expect(runningMoveControl).not.toHaveCSS("width", "0px");
     await expect(runningMoveCheckbox).toBeDisabled();
     await expectNoMoveRequestDuring(page, async () => {
       try {

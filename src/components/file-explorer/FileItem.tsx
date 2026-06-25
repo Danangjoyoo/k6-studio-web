@@ -165,10 +165,10 @@ export default function FileItem({
               data-testid="row-selection-control"
               data-selection-visible={selectionVisible ? "true" : "false"}
               className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center transition-opacity",
+                "flex h-4 shrink-0 items-center justify-center overflow-hidden transition-[width,opacity]",
                 selectionVisible
-                  ? "pointer-events-auto opacity-100"
-                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus:pointer-events-auto group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                  ? "pointer-events-auto w-4 opacity-100"
+                  : "pointer-events-none w-0 opacity-0 group-hover:pointer-events-auto group-hover:w-4 group-hover:opacity-100 group-focus:pointer-events-auto group-focus:w-4 group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:w-4 group-focus-within:opacity-100"
               )}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}

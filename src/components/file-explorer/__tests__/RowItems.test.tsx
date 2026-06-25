@@ -51,6 +51,7 @@ describe("file explorer row items", () => {
 
     expect(checkbox).not.toBeChecked();
     expect(control).toHaveAttribute("data-selection-visible", "false");
+    expect(control).toHaveClass("w-0");
     expect(control).toHaveClass("opacity-0");
   });
 
@@ -65,7 +66,22 @@ describe("file explorer row items", () => {
 
     expect(row).toHaveAttribute("aria-selected", "true");
     expect(control).toHaveAttribute("data-selection-visible", "true");
+    expect(control).toHaveClass("w-4");
     expect(control).toHaveClass("opacity-100");
+  });
+
+  it("folder row does not reserve checkbox width while selection control is hidden", () => {
+    renderFolderItem({
+      isSelectionChecked: false,
+      onSelectionChange: jest.fn(),
+    });
+
+    const row = screen.getByTestId("sidebar-folder-item");
+    const control = within(row).getByTestId("row-selection-control");
+
+    expect(control).toHaveAttribute("data-selection-visible", "false");
+    expect(control).toHaveClass("w-0");
+    expect(control).toHaveClass("opacity-0");
   });
 
   it("rows use treeitem semantics for selection and folder expansion", () => {
