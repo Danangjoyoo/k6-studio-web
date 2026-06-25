@@ -22,6 +22,7 @@ interface FileItemProps {
   isSelectionChecked?: boolean;
   isSelectionDisabled?: boolean;
   showSelectionControl?: boolean;
+  allowSelectionControlReveal?: boolean;
   onSelectionChange?: (checked: boolean, path: string) => void;
   onSelectionToggle?: (path: string) => void;
   isDragEnabled?: boolean;
@@ -46,6 +47,7 @@ export default function FileItem({
   isSelectionChecked,
   isSelectionDisabled = false,
   showSelectionControl,
+  allowSelectionControlReveal = false,
   onSelectionChange,
   onSelectionToggle,
   isDragEnabled = false,
@@ -63,6 +65,8 @@ export default function FileItem({
   const inputRef = useRef<HTMLInputElement>(null);
   const selectionVisible =
     Boolean(showSelectionControl) || Boolean(isSelectionChecked);
+  const selectionHoverEnabled =
+    !selectionVisible && Boolean(allowSelectionControlReveal);
 
   function startEdit(e: React.MouseEvent) {
     e.stopPropagation();
@@ -164,11 +168,16 @@ export default function FileItem({
             <span
               data-testid="row-selection-control"
               data-selection-visible={selectionVisible ? "true" : "false"}
+              data-selection-hover-enabled={selectionHoverEnabled ? "true" : "false"}
               className={cn(
                 "flex h-4 shrink-0 items-center justify-center overflow-hidden transition-[width,opacity,margin-right]",
                 selectionVisible
                   ? "pointer-events-auto mr-2 w-4 opacity-100"
-                  : "pointer-events-none mr-0 w-0 opacity-0 group-hover:pointer-events-auto group-hover:mr-2 group-hover:w-4 group-hover:opacity-100 group-focus:pointer-events-auto group-focus:mr-2 group-focus:w-4 group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:mr-2 group-focus-within:w-4 group-focus-within:opacity-100"
+                  : cn(
+                      "pointer-events-none mr-0 w-0 opacity-0",
+                      selectionHoverEnabled &&
+                        "group-hover:pointer-events-auto group-hover:mr-2 group-hover:w-4 group-hover:opacity-100 group-focus:pointer-events-auto group-focus:mr-2 group-focus:w-4 group-focus:opacity-100 group-focus-within:pointer-events-auto group-focus-within:mr-2 group-focus-within:w-4 group-focus-within:opacity-100"
+                    )
               )}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}

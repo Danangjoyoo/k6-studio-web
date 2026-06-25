@@ -362,6 +362,63 @@ describe("FileExplorer", () => {
     );
   });
 
+  it("enables checkbox hover reveal only while shift is held", async () => {
+    mockFilesTree([
+      { path: "script.ts", name: "script.ts", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const row = await rowByPath("script.ts");
+    const control = within(row).getByTestId("row-selection-control");
+
+    expect(control).toHaveAttribute("data-selection-hover-enabled", "false");
+    expect(control.className).not.toContain("group-hover:w-4");
+
+    fireEvent.keyDown(window, { key: "Shift" });
+
+    await waitFor(() => {
+      expect(control).toHaveAttribute("data-selection-hover-enabled", "true");
+    });
+    expect(control.className).toContain("group-hover:w-4");
+
+    fireEvent.keyUp(window, { key: "Shift" });
+
+    await waitFor(() => {
+      expect(control).toHaveAttribute("data-selection-hover-enabled", "false");
+    });
+  });
+
+  it("keeps checkbox controls visible while selected and collapses them after clearing selection", async () => {
+    mockFilesTree([
+      { path: "script.ts", name: "script.ts", type: "file" },
+      { path: "other.ts", name: "other.ts", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const scriptRow = await rowByPath("script.ts");
+    const otherRow = await rowByPath("other.ts");
+    const scriptControl = within(scriptRow).getByTestId("row-selection-control");
+    const otherControl = within(otherRow).getByTestId("row-selection-control");
+
+    fireEvent.click(scriptRow, { ctrlKey: true });
+
+    await waitFor(() => {
+      expect(scriptControl).toHaveAttribute("data-selection-visible", "true");
+      expect(otherControl).toHaveAttribute("data-selection-visible", "true");
+    });
+
+    fireEvent.click(scriptRow, { ctrlKey: true });
+
+    await waitFor(() => {
+      expect(scriptControl).toHaveAttribute("data-selection-visible", "false");
+      expect(otherControl).toHaveAttribute("data-selection-visible", "false");
+      expect(scriptControl).toHaveClass("w-0");
+      expect(otherControl).toHaveClass("w-0");
+    });
+  });
+
   it("ctrl-click toggles move selection without selecting file rows", async () => {
     const onSelectFile = jest.fn();
     mockFilesTree(scriptsTree());

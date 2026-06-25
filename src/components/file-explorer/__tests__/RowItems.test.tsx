@@ -55,7 +55,26 @@ describe("file explorer row items", () => {
     expect(control).toHaveClass("mr-0");
     expect(control).toHaveClass("opacity-0");
     expect(control).not.toHaveClass("mr-2");
+    expect(control).toHaveAttribute("data-selection-hover-enabled", "false");
+    expect(control.className).not.toContain("group-hover:w-4");
     expect(control.parentElement).not.toHaveClass("gap-2");
+  });
+
+  it("file row only enables hover checkbox reveal when requested", () => {
+    renderFileItem({
+      isSelectionChecked: false,
+      allowSelectionControlReveal: true,
+      onSelectionChange: jest.fn(),
+    });
+
+    const row = screen.getByTestId("sidebar-file-item");
+    const control = within(row).getByTestId("row-selection-control");
+
+    expect(control).toHaveAttribute("data-selection-visible", "false");
+    expect(control).toHaveAttribute("data-selection-hover-enabled", "true");
+    expect(control).toHaveClass("w-0");
+    expect(control.className).toContain("group-hover:w-4");
+    expect(control.className).toContain("group-focus:w-4");
   });
 
   it("selected file row shows the checkbox and exposes aria-selected", () => {
@@ -89,7 +108,26 @@ describe("file explorer row items", () => {
     expect(control).toHaveClass("mr-0");
     expect(control).toHaveClass("opacity-0");
     expect(control).not.toHaveClass("mr-1.5");
+    expect(control).toHaveAttribute("data-selection-hover-enabled", "false");
+    expect(control.className).not.toContain("group-hover:w-4");
     expect(control.parentElement).not.toHaveClass("gap-1.5");
+  });
+
+  it("folder row only enables hover checkbox reveal when requested", () => {
+    renderFolderItem({
+      isSelectionChecked: false,
+      allowSelectionControlReveal: true,
+      onSelectionChange: jest.fn(),
+    });
+
+    const row = screen.getByTestId("sidebar-folder-item");
+    const control = within(row).getByTestId("row-selection-control");
+
+    expect(control).toHaveAttribute("data-selection-visible", "false");
+    expect(control).toHaveAttribute("data-selection-hover-enabled", "true");
+    expect(control).toHaveClass("w-0");
+    expect(control.className).toContain("group-hover:w-4");
+    expect(control.className).toContain("group-focus:w-4");
   });
 
   it("selected folder row shows the checkbox with explicit spacing", () => {

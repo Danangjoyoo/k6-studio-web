@@ -75,6 +75,7 @@ export default function FileExplorer({
   const [lastSelectionKey, setLastSelectionKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [moveStatus, setMoveStatus] = useState<string | null>(null);
+  const [selectionRevealKeyHeld, setSelectionRevealKeyHeld] = useState(false);
   const dragSourceRef = useRef<MoveSelection | null>(null);
   const knownFolderPathsRef = useRef<Set<string>>(new Set());
   const fetchTreeRequestIdRef = useRef(0);
@@ -110,6 +111,41 @@ export default function FileExplorer({
   useEffect(() => {
     void fetchTree();
   }, [fetchTree]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Shift") {
+        setSelectionRevealKeyHeld(true);
+      }
+    }
+
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.key === "Shift") {
+        setSelectionRevealKeyHeld(false);
+      }
+    }
+
+    function resetRevealKey() {
+      setSelectionRevealKeyHeld(false);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        resetRevealKey();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", resetRevealKey);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", resetRevealKey);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     setTree([]);
@@ -408,6 +444,7 @@ export default function FileExplorer({
             onSelectionChange={(checked) => handleSelectionChange(item, checked)}
             onSelectionToggle={() => toggleMoveSelection(item)}
             showSelectionControl={showSelectionControls}
+            allowSelectionControlReveal={selectionRevealKeyHeld}
             isDragEnabled
             isDragDisabled={disabled}
             isDropActive={dropTarget === normalizeFolderPath(node.path)}
@@ -456,6 +493,7 @@ export default function FileExplorer({
           onSelectionChange={(checked) => handleSelectionChange(item, checked)}
           onSelectionToggle={() => toggleMoveSelection(item)}
           showSelectionControl={showSelectionControls}
+          allowSelectionControlReveal={selectionRevealKeyHeld}
           isDragEnabled
           isDragDisabled={disabled}
           onRowDragStart={() => handleDragStart(item)}

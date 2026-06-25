@@ -579,12 +579,17 @@ test.describe("k6 Studio E2E", () => {
     await expect(runningMoveControl).toHaveCSS("opacity", "0");
     await expect(runningMoveControl).toHaveCSS("width", "0px");
     await fileRow(page, script).hover();
+    await expect(runningMoveControl).toHaveCSS("opacity", "0");
+    await expect(runningMoveControl).toHaveCSS("width", "0px");
+    await page.keyboard.down("Shift");
+    await fileRow(page, script).hover();
     const runningMoveCheckbox = fileRow(page, script).locator(
       "input[type='checkbox']"
     );
     await expect(runningMoveControl).toHaveCSS("opacity", "1");
     await expect(runningMoveControl).not.toHaveCSS("width", "0px");
     await expect(runningMoveCheckbox).toBeDisabled();
+    await page.keyboard.up("Shift");
     await expect(fileRow(page, script)).toHaveAttribute("draggable", "false");
     await expectNoMoveRequestDuring(page, async () => {
       await dragWithMouse(page, fileRow(page, script), folderRow(page, `${folder}/`));
