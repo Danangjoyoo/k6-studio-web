@@ -19,6 +19,8 @@ import LiveDashboardTab from "@/components/tabs/LiveDashboardTab";
 import TestHistoryTab from "@/components/tabs/TestHistoryTab";
 import { cn } from "@/lib/utils";
 
+type PathOperationType = "file" | "folder";
+
 function WorkspaceContent({
   selectedFile,
   onSelectFile,
@@ -28,7 +30,11 @@ function WorkspaceContent({
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
   onFileDeleted: (name: string) => void;
-  onFileRenamed: (oldPath: string, newPath: string) => void;
+  onFileRenamed: (
+    oldPath: string,
+    newPath: string,
+    type?: PathOperationType
+  ) => void;
 }) {
   const { runEpoch, globalRunning, globalRunningScript } = useScriptWorkspace();
 
@@ -142,8 +148,14 @@ export default function AppShell() {
     setSelectedFile((current) => (current === name ? null : current));
   }
 
-  function handleFileRenamed(oldPath: string, newPath: string) {
-    setSelectedFile((current) => (current === oldPath ? newPath : current));
+  function handleFileRenamed(
+    oldPath: string,
+    newPath: string,
+    type: PathOperationType = "file"
+  ) {
+    setSelectedFile((current) =>
+      mapSelectedPathAfterOperation(current, oldPath, newPath, type)
+    );
   }
 
   return (
@@ -161,4 +173,32 @@ export default function AppShell() {
       </ScriptWorkspaceProvider>
     </div>
   );
+}
+
+function mapSelectedPathAfterOperation(
+  current: string | null,
+  oldPath: string,
+  newPath: string,
+  type: PathOperationType
+): string | null {
+  if (!current) return current;
+
+  if (type === "file") {
+    return current === oldPath ? newPath : current;
+  }
+
+  const oldFolder = normalizeFolderPath(oldPath);
+  const newFolder = normalizeFolderPath(newPath);
+  const oldPrefix = `${oldFolder}/`;
+  if (!current.startsWith(oldPrefix)) return current;
+
+  return joinPath(newFolder, current.slice(oldPrefix.length));
+}
+
+function normalizeFolderPath(path: string): string {
+  return path.replace(/\/+$/, "");
+}
+
+function joinPath(folder: string, suffix: string): string {
+  return folder ? `${folder}/${suffix}` : suffix;
 }

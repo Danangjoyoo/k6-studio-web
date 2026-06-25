@@ -10,7 +10,11 @@ let mockFileExplorerProps:
   | {
       selectedFile: string | null;
       globalRunningScript?: string | null;
-      onFileRenamed?: (oldPath: string, newPath: string) => void;
+      onFileRenamed?: (
+        oldPath: string,
+        newPath: string,
+        type?: "file" | "folder"
+      ) => void;
     }
   | undefined;
 let mockWorkspaceState = {
@@ -48,7 +52,11 @@ jest.mock("@/components/file-explorer/FileExplorer", () => ({
     selectedFile: string | null;
     onSelectFile: (name: string) => void;
     onFileDeleted?: (name: string) => void;
-    onFileRenamed?: (oldPath: string, newPath: string) => void;
+    onFileRenamed?: (
+      oldPath: string,
+      newPath: string,
+      type?: "file" | "folder"
+    ) => void;
     globalRunningScript?: string | null;
   }) => {
     mockOnFileDeleted = onFileDeleted;
@@ -62,14 +70,38 @@ jest.mock("@/components/file-explorer/FileExplorer", () => ({
         <button type="button" onClick={() => onSelectFile("test.js")}>
           select-test
         </button>
+        <button type="button" onClick={() => onSelectFile("src/a.ts")}>
+          select-src-a
+        </button>
+        <button type="button" onClick={() => onSelectFile("src/nested/a.ts")}>
+          select-src-nested-a
+        </button>
         <button type="button" onClick={() => onFileDeleted?.("test.js")}>
           delete-test
         </button>
         <button
           type="button"
-          onClick={() => onFileRenamed?.("test.js", "moved/test.js")}
+          onClick={() => onFileRenamed?.("test.js", "moved/test.js", "file")}
         >
           move-test
+        </button>
+        <button
+          type="button"
+          onClick={() => onFileRenamed?.("src/a.ts", "dest/a.ts", "file")}
+        >
+          complete-file-move
+        </button>
+        <button
+          type="button"
+          onClick={() => onFileRenamed?.("src", "dest/src", "folder")}
+        >
+          complete-folder-move
+        </button>
+        <button
+          type="button"
+          onClick={() => onFileRenamed?.("src", "source", "folder")}
+        >
+          complete-folder-rename
         </button>
       </div>
     );
@@ -138,5 +170,35 @@ describe("AppShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /move-test/i }));
     expect(screen.getByTestId("editor-tab")).toHaveTextContent("moved/test.js");
+  });
+
+  it("maps the current selected file when a file move completes after selection changes", () => {
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: /select-src-a/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("src/a.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: /complete-file-move/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("dest/a.ts");
+  });
+
+  it("maps the current selected descendant when a folder move completes after selection changes", () => {
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: /select-src-nested-a/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("src/nested/a.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: /complete-folder-move/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("dest/src/nested/a.ts");
+  });
+
+  it("maps the current selected descendant when a folder rename completes after selection changes", () => {
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: /select-src-a/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("src/a.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: /complete-folder-rename/i }));
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("source/a.ts");
   });
 });

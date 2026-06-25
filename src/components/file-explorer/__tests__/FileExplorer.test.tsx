@@ -254,6 +254,28 @@ describe("FileExplorer", () => {
     });
   });
 
+  it("reports every moved file and folder as completed path operations", async () => {
+    const onFileRenamed = jest.fn();
+    moveFetchSequence(scriptsTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
+
+    await selectCheckbox("Select a.ts");
+    await selectCheckbox("Select other");
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    await waitFor(() => {
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "dest/a.ts", "file");
+    });
+    expect(onFileRenamed).toHaveBeenCalledWith("other", "dest/other", "folder");
+  });
+
   it("dragging an unselected row posts only that row", async () => {
     moveFetchSequence(scriptsTree());
 
@@ -345,7 +367,7 @@ describe("FileExplorer", () => {
     expect(moveApiCalls()).toHaveLength(0);
   });
 
-  it("successful file move refreshes tree, clears selection, and reports selected path update", async () => {
+  it("successful file move refreshes tree, clears selection, and reports the file path operation", async () => {
     const onFileRenamed = jest.fn();
     moveFetchSequence(scriptsTree(), [
       {
@@ -368,7 +390,7 @@ describe("FileExplorer", () => {
     await dragRowToFolder("src/a.ts", "dest/");
 
     await waitFor(() => {
-      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "dest/a.ts");
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "dest/a.ts", "file");
     });
     expect(screen.queryByRole("checkbox", { name: "Select a.ts" })).not.toBeChecked();
   });
@@ -410,7 +432,7 @@ describe("FileExplorer", () => {
     expect(screen.getByRole("checkbox", { name: "Select a.ts" })).not.toBeChecked();
   });
 
-  it("successful folder move updates selected file path when selected file was under the folder", async () => {
+  it("successful folder move reports the folder path operation", async () => {
     const onFileRenamed = jest.fn();
     moveFetchSequence(scriptsTree());
 
@@ -426,7 +448,7 @@ describe("FileExplorer", () => {
     await dragRowToFolder("src/", "dest/");
 
     await waitFor(() => {
-      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "dest/src/a.ts");
+      expect(onFileRenamed).toHaveBeenCalledWith("src", "dest/src", "folder");
     });
   });
 
@@ -511,7 +533,7 @@ describe("FileExplorer", () => {
     expect(moveApiCalls()).toHaveLength(0);
   });
 
-  it("renames a file through the rename API and reports the selected path update", async () => {
+  it("renames a file through the rename API and reports the file path operation", async () => {
     const onFileRenamed = jest.fn();
     mockFetchSequence(
       { json: { files: [], tree: scriptsTree() } },
@@ -569,7 +591,7 @@ describe("FileExplorer", () => {
       type: "file",
     });
     await waitFor(() => {
-      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "src/renamed.ts");
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "src/renamed.ts", "file");
     });
     expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
   });
@@ -611,7 +633,7 @@ describe("FileExplorer", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/files")).toHaveLength(1);
   });
 
-  it("renames a folder through the rename API, refreshes, and reports selected descendant path update", async () => {
+  it("renames a folder through the rename API, refreshes, and reports the folder path operation", async () => {
     const onFileRenamed = jest.fn();
     mockFetchSequence(
       { json: { files: [], tree: scriptsTree() } },
@@ -670,7 +692,7 @@ describe("FileExplorer", () => {
     });
     expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
     await waitFor(() => {
-      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "source/a.ts");
+      expect(onFileRenamed).toHaveBeenCalledWith("src", "source", "folder");
     });
   });
 

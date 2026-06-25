@@ -16,7 +16,11 @@ export interface FileExplorerProps {
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
   onFileDeleted?: (name: string) => void;
-  onFileRenamed?: (oldPath: string, newPath: string) => void;
+  onFileRenamed?: (
+    oldPath: string,
+    newPath: string,
+    type?: MoveSelectionType
+  ) => void;
   globalRunningScript?: string | null;
 }
 
@@ -152,7 +156,7 @@ export default function FileExplorer({
     }
     setMoveStatus(null);
     await fetchTree();
-    onFileRenamed?.(oldPath, newPath);
+    onFileRenamed?.(oldPath, newPath, "file");
   }
 
   async function handleRenameFolder(oldPath: string, newPath: string) {
@@ -169,13 +173,7 @@ export default function FileExplorer({
     await fetchTree();
     const oldFolder = normalizeFolderPath(oldPath);
     const newFolder = normalizeFolderPath(newPath);
-    const oldPrefix = `${oldFolder}/`;
-    if (selectedFile?.startsWith(oldPrefix)) {
-      onFileRenamed?.(
-        selectedFile,
-        joinPath(newFolder, selectedFile.slice(oldPrefix.length))
-      );
-    }
+    onFileRenamed?.(oldFolder, newFolder, "folder");
   }
 
   function handleSelectionChange(
@@ -211,12 +209,6 @@ export default function FileExplorer({
     if (items.length === 0) return;
 
     const targetFolder = normalizeFolderPath(targetFolderPath);
-    const selectedPathUpdate = computeMovedSelectedPath(
-      selectedFile,
-      items,
-      targetFolder
-    );
-
     const response = await fetch("/api/files/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -243,8 +235,13 @@ export default function FileExplorer({
       return next;
     });
     setMoveStatus(null);
-    if (selectedPathUpdate) {
-      onFileRenamed?.(selectedPathUpdate.from, selectedPathUpdate.to);
+    for (const item of items) {
+      const from = item.type === "folder" ? normalizeFolderPath(item.path) : item.path;
+      onFileRenamed?.(
+        from,
+        joinPath(targetFolder, basename(from)),
+        item.type
+      );
     }
     await fetchTree();
   }
@@ -466,35 +463,6 @@ function pruneNestedSelections(items: MoveSelection[]): MoveSelection[] {
       return itemPath.startsWith(`${folderPath}/`);
     });
   });
-}
-
-function computeMovedSelectedPath(
-  selectedFile: string | null,
-  items: MoveSelection[],
-  targetFolder: string
-): { from: string; to: string } | null {
-  if (!selectedFile) return null;
-
-  for (const item of items) {
-    if (item.type === "file" && item.path === selectedFile) {
-      return {
-        from: selectedFile,
-        to: joinPath(targetFolder, basename(item.path)),
-      };
-    }
-
-    if (item.type === "folder") {
-      const sourcePrefix = `${item.path.replace(/\/+$/, "")}/`;
-      if (selectedFile.startsWith(sourcePrefix)) {
-        return {
-          from: selectedFile,
-          to: `${joinPath(targetFolder, basename(item.path))}/${selectedFile.slice(sourcePrefix.length)}`,
-        };
-      }
-    }
-  }
-
-  return null;
 }
 
 function joinPath(folder: string, name: string): string {
