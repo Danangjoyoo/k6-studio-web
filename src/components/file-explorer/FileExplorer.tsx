@@ -141,21 +141,31 @@ export default function FileExplorer({
   }
 
   async function handleRenameFile(oldPath: string, newPath: string) {
-    await fetch("/api/files/rename", {
+    const response = await fetch("/api/files/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ from: oldPath, to: newPath, type: "file" }),
     });
+    if (!response.ok) {
+      setMoveStatus(await readErrorMessage(response, "Rename failed"));
+      return;
+    }
+    setMoveStatus(null);
     await fetchTree();
     onFileRenamed?.(oldPath, newPath);
   }
 
   async function handleRenameFolder(oldPath: string, newPath: string) {
-    await fetch("/api/files/rename", {
+    const response = await fetch("/api/files/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ from: oldPath, to: newPath, type: "folder" }),
     });
+    if (!response.ok) {
+      setMoveStatus(await readErrorMessage(response, "Rename failed"));
+      return;
+    }
+    setMoveStatus(null);
     await fetchTree();
     const oldFolder = normalizeFolderPath(oldPath);
     const newFolder = normalizeFolderPath(newPath);
@@ -495,6 +505,18 @@ function basename(path: string): string {
   const normalized = path.replace(/\/+$/, "");
   const parts = normalized.split("/");
   return parts[parts.length - 1];
+}
+
+async function readErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: string };
+    return body.error ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function encodeApiPath(path: string): string {

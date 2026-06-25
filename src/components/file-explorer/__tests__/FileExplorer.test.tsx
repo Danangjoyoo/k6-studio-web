@@ -574,6 +574,43 @@ describe("FileExplorer", () => {
     expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
   });
 
+  it("does not refresh or report path updates when file rename fails", async () => {
+    const onFileRenamed = jest.fn();
+    mockFetchSequence(
+      { json: { files: [], tree: scriptsTree() } },
+      { ok: false, json: { error: "Destination already exists: src/renamed.ts" } }
+    );
+
+    render(
+      <FileExplorer
+        selectedFile="src/a.ts"
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
+
+    const fileRow = await screen.findByText("a.ts").then(() =>
+      screen
+        .getAllByTestId("sidebar-file-item")
+        .find((item) => item.getAttribute("data-path") === "src/a.ts")
+    );
+    if (!fileRow) throw new Error("file row missing");
+
+    fireEvent.doubleClick(fileRow);
+    const input = within(fileRow).getByDisplayValue("a.ts");
+    fireEvent.change(input, { target: { value: "renamed.ts" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+
+    expect(
+      await screen.findByRole("status")
+    ).toHaveTextContent("Destination already exists: src/renamed.ts");
+    expect(onFileRenamed).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/files")).toHaveLength(1);
+  });
+
   it("renames a folder through the rename API, refreshes, and reports selected descendant path update", async () => {
     const onFileRenamed = jest.fn();
     mockFetchSequence(
@@ -635,6 +672,43 @@ describe("FileExplorer", () => {
     await waitFor(() => {
       expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "source/a.ts");
     });
+  });
+
+  it("does not refresh or report selected descendant updates when folder rename fails", async () => {
+    const onFileRenamed = jest.fn();
+    mockFetchSequence(
+      { json: { files: [], tree: scriptsTree() } },
+      { ok: false, json: { error: "Cannot rename folder while script is running" } }
+    );
+
+    render(
+      <FileExplorer
+        selectedFile="src/a.ts"
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
+
+    const folderRow = await screen.findByText("src").then(() =>
+      screen
+        .getAllByTestId("sidebar-folder-item")
+        .find((item) => item.getAttribute("data-path") === "src/")
+    );
+    if (!folderRow) throw new Error("folder row missing");
+
+    fireEvent.doubleClick(folderRow);
+    const input = within(folderRow).getByDisplayValue("src");
+    fireEvent.change(input, { target: { value: "source" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+
+    expect(
+      await screen.findByRole("status")
+    ).toHaveTextContent("Cannot rename folder while script is running");
+    expect(onFileRenamed).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/files")).toHaveLength(1);
   });
 
   it("opens one folder-scoped script dialog and creates the script under that folder", async () => {
