@@ -39,10 +39,21 @@ function jsonRequest(body: unknown) {
   });
 }
 
+function defaultNamespaceObjects(prefix: string, objects: string[]) {
+  if (prefix !== "default/") return objects;
+  return objects.map((name) =>
+    name.startsWith("default/") ? name : `default/${name}`
+  );
+}
+
 function mockObjects(scripts: string[], reports: string[] = []) {
-  mockClient.listObjects.mockImplementation((bucket: string) => {
-    if (bucket === SCRIPTS_BUCKET) return objectStream(scripts);
-    if (bucket === REPORTS_BUCKET) return objectStream(reports);
+  mockClient.listObjects.mockImplementation((bucket: string, prefix: string) => {
+    if (bucket === SCRIPTS_BUCKET) {
+      return objectStream(defaultNamespaceObjects(prefix, scripts));
+    }
+    if (bucket === REPORTS_BUCKET) {
+      return objectStream(defaultNamespaceObjects(prefix, reports));
+    }
     return objectStream([]);
   });
 }
@@ -100,11 +111,11 @@ describe("POST /api/files/rename", () => {
     });
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       SCRIPTS_BUCKET,
-      "src/b.ts",
-      `/${SCRIPTS_BUCKET}/src/a.ts`
+      "default/src/b.ts",
+      `/${SCRIPTS_BUCKET}/default/src/a.ts`
     );
     expect(mockClient.removeObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, [
-      "src/a.ts",
+      "default/src/a.ts",
     ]);
   });
 
@@ -148,6 +159,7 @@ describe("POST /api/files/rename", () => {
     mockObjects(["src/a.ts"]);
     (getStatus as jest.Mock).mockReturnValue({
       running: true,
+      namespace: "default",
       script: "src/a.ts",
       startedAt: 1,
       activeRunners: 1,
@@ -173,6 +185,7 @@ describe("POST /api/files/rename", () => {
     mockObjects(["src/a.ts"]);
     (getStatus as jest.Mock).mockReturnValue({
       running: true,
+      namespace: "default",
       script: "src/a.ts",
       startedAt: 1,
       activeRunners: 1,
@@ -213,12 +226,89 @@ describe("POST /api/files/rename", () => {
     });
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       REPORTS_BUCKET,
-      "src/b.ts-111.html",
-      `/${REPORTS_BUCKET}/src/a.ts-111.html`
+      "default/src/b.ts-111.html",
+      `/${REPORTS_BUCKET}/default/src/a.ts-111.html`
     );
     expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
-      "src/a.ts-111.html",
+      "default/src/a.ts-111.html",
     ]);
+  });
+
+  it("renames namespace-relative scripts and report history with prefixed storage keys", async () => {
+    mockObjects(
+      ["team-a/src/a.ts", "team-b/src/b.ts"],
+      ["team-a/src/a.ts-111.html", "team-b/src/a.ts-111.html"]
+    );
+
+    const response = await POST(
+      jsonRequest({
+        namespace: "team-a",
+        from: "src/a.ts",
+        to: "src/b.ts",
+        type: "file",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      from: "src/a.ts",
+      to: "src/b.ts",
+      moved: { scripts: 1, reports: 1 },
+    });
+    expect(mockClient.listObjects).toHaveBeenCalledWith(
+      SCRIPTS_BUCKET,
+      "team-a/",
+      true
+    );
+    expect(mockClient.listObjects).toHaveBeenCalledWith(
+      REPORTS_BUCKET,
+      "team-a/",
+      true
+    );
+    expect(mockClient.copyObject).toHaveBeenCalledWith(
+      SCRIPTS_BUCKET,
+      "team-a/src/b.ts",
+      `/${SCRIPTS_BUCKET}/team-a/src/a.ts`
+    );
+    expect(mockClient.copyObject).toHaveBeenCalledWith(
+      REPORTS_BUCKET,
+      "team-a/src/b.ts-111.html",
+      `/${REPORTS_BUCKET}/team-a/src/a.ts-111.html`
+    );
+    expect(mockClient.removeObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, [
+      "team-a/src/a.ts",
+    ]);
+    expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
+      "team-a/src/a.ts-111.html",
+    ]);
+  });
+
+  it("does not block matching rename paths when active run namespace differs", async () => {
+    mockObjects(["team-a/src/a.ts"]);
+    (getStatus as jest.Mock).mockReturnValue({
+      running: true,
+      namespace: "team-b",
+      script: "src/a.ts",
+      startedAt: 1,
+      activeRunners: 1,
+      capacity: 1,
+    });
+
+    const response = await POST(
+      jsonRequest({
+        namespace: "team-a",
+        from: "src/a.ts",
+        to: "src/b.ts",
+        type: "file",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      from: "src/a.ts",
+      to: "src/b.ts",
+      moved: { scripts: 1, reports: 0 },
+    });
   });
 
   it("does not move similarly named script reports", async () => {
@@ -243,8 +333,8 @@ describe("POST /api/files/rename", () => {
     });
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       REPORTS_BUCKET,
-      "src/b.ts-111.html",
-      `/${REPORTS_BUCKET}/src/a.ts-111.html`
+      "default/src/b.ts-111.html",
+      `/${REPORTS_BUCKET}/default/src/a.ts-111.html`
     );
     expect(mockClient.copyObject).not.toHaveBeenCalledWith(
       REPORTS_BUCKET,
@@ -252,7 +342,7 @@ describe("POST /api/files/rename", () => {
       `/${REPORTS_BUCKET}/src/a.ts-extra-111.html`
     );
     expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
-      "src/a.ts-111.html",
+      "default/src/a.ts-111.html",
     ]);
   });
 
@@ -299,31 +389,31 @@ describe("POST /api/files/rename", () => {
     });
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       SCRIPTS_BUCKET,
-      "renamed/a.ts",
-      `/${SCRIPTS_BUCKET}/src/a.ts`
+      "default/renamed/a.ts",
+      `/${SCRIPTS_BUCKET}/default/src/a.ts`
     );
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       SCRIPTS_BUCKET,
-      "renamed/nested/b.ts",
-      `/${SCRIPTS_BUCKET}/src/nested/b.ts`
+      "default/renamed/nested/b.ts",
+      `/${SCRIPTS_BUCKET}/default/src/nested/b.ts`
     );
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       REPORTS_BUCKET,
-      "renamed/a.ts-111.html",
-      `/${REPORTS_BUCKET}/src/a.ts-111.html`
+      "default/renamed/a.ts-111.html",
+      `/${REPORTS_BUCKET}/default/src/a.ts-111.html`
     );
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       REPORTS_BUCKET,
-      "renamed/nested/b.ts-222.html",
-      `/${REPORTS_BUCKET}/src/nested/b.ts-222.html`
+      "default/renamed/nested/b.ts-222.html",
+      `/${REPORTS_BUCKET}/default/src/nested/b.ts-222.html`
     );
     expect(mockClient.removeObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, [
-      "src/a.ts",
-      "src/nested/b.ts",
+      "default/src/a.ts",
+      "default/src/nested/b.ts",
     ]);
     expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
-      "src/a.ts-111.html",
-      "src/nested/b.ts-222.html",
+      "default/src/a.ts-111.html",
+      "default/src/nested/b.ts-222.html",
     ]);
   });
 
@@ -346,11 +436,11 @@ describe("POST /api/files/rename", () => {
     });
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       SCRIPTS_BUCKET,
-      "renamed-empty/.keep",
-      `/${SCRIPTS_BUCKET}/empty/.keep`
+      "default/renamed-empty/.keep",
+      `/${SCRIPTS_BUCKET}/default/empty/.keep`
     );
     expect(mockClient.removeObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, [
-      "empty/.keep",
+      "default/empty/.keep",
     ]);
   });
 

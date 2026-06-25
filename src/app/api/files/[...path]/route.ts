@@ -1,15 +1,30 @@
 import { NextResponse } from "next/server";
 import { getMinioClient, SCRIPTS_BUCKET, ensureBuckets } from "@/lib/minio";
+import {
+  getNamespaceFromRequest,
+  NamespaceError,
+  toNamespacedKey,
+} from "@/lib/namespaces";
 
 type Params = { params: Promise<{ path: string[] }> };
 
 export async function GET(_req: Request, { params }: Params) {
+  let namespace: string;
+  try {
+    namespace = getNamespaceFromRequest(_req);
+  } catch (error) {
+    if (error instanceof NamespaceError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
   await ensureBuckets();
   const { path } = await params;
   const name = path.join("/");
+  const key = toNamespacedKey(namespace, name);
   const client = getMinioClient();
   try {
-    const stream = await client.getObject(SCRIPTS_BUCKET, name);
+    const stream = await client.getObject(SCRIPTS_BUCKET, key);
     const chunks: Buffer[] = [];
     await new Promise<void>((resolve, reject) => {
       stream.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -26,33 +41,53 @@ export async function GET(_req: Request, { params }: Params) {
 }
 
 export async function PUT(request: Request, { params }: Params) {
+  let namespace: string;
+  try {
+    namespace = getNamespaceFromRequest(request);
+  } catch (error) {
+    if (error instanceof NamespaceError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
   await ensureBuckets();
   const { path } = await params;
   const name = path.join("/");
+  const key = toNamespacedKey(namespace, name);
   const { content } = (await request.json()) as { content: string };
   const client = getMinioClient();
   const buffer = Buffer.from(content, "utf-8");
-  await client.putObject(SCRIPTS_BUCKET, name, buffer, buffer.length, {
+  await client.putObject(SCRIPTS_BUCKET, key, buffer, buffer.length, {
     "Content-Type": "text/plain",
   });
   return NextResponse.json({ name });
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
+  let namespace: string;
+  try {
+    namespace = getNamespaceFromRequest(_req);
+  } catch (error) {
+    if (error instanceof NamespaceError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
   await ensureBuckets();
   const { path } = await params;
   const name = path.join("/");
+  const key = toNamespacedKey(namespace, name);
   const client = getMinioClient();
 
   if (name.endsWith("/")) {
     // Folder delete: remove all objects under this prefix
-    const prefix = name;
+    const prefix = key;
     const objects: string[] = await listObjectsWithPrefix(client, prefix);
     if (objects.length > 0) {
       await client.removeObjects(SCRIPTS_BUCKET, objects);
     }
   } else {
-    await client.removeObject(SCRIPTS_BUCKET, name);
+    await client.removeObject(SCRIPTS_BUCKET, key);
   }
   return new Response(null, { status: 204 });
 }

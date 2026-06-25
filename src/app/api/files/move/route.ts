@@ -12,13 +12,21 @@ import {
   MoveConflictError,
   type MoveItem,
 } from "@/lib/files-move";
+import {
+  namespacePrefix,
+  NamespaceError,
+  normalizeNamespace,
+  stripNamespacePrefix,
+} from "@/lib/namespaces";
 
 interface MoveRequestBody {
+  namespace?: unknown;
   items?: MoveItem[];
   targetFolder?: string;
 }
 
 type RunStatusWithLegacyName = ReturnType<typeof getStatus> & {
+  namespace?: string | null;
   runningScript?: string | null;
 };
 
@@ -36,15 +44,24 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  let namespace: string;
+  try {
+    namespace = normalizeNamespace(body.namespace);
+  } catch (error) {
+    if (error instanceof NamespaceError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
 
   await ensureBuckets();
   const client = getMinioClient();
   const [scriptObjectKeys, reportObjectKeys] = await Promise.all([
-    listAll(client, SCRIPTS_BUCKET),
-    listAll(client, REPORTS_BUCKET),
+    listNamespace(client, SCRIPTS_BUCKET, namespace),
+    listNamespace(client, REPORTS_BUCKET, namespace),
   ]);
   const status = getStatus() as RunStatusWithLegacyName;
-  const activeRunningScript = status.running
+  const activeRunningScript = status.running && status.namespace === namespace
     ? status.script ?? status.runningScript ?? null
     : null;
 
@@ -57,7 +74,7 @@ export async function POST(request: Request) {
       activeRunningScript,
     });
 
-    await executeMovePlan(client, plan);
+    await executeMovePlan(client, plan, namespace);
 
     return NextResponse.json({
       moved: {
@@ -76,15 +93,19 @@ export async function POST(request: Request) {
   }
 }
 
-async function listAll(
+async function listNamespace(
   client: ReturnType<typeof getMinioClient>,
-  bucket: string
+  bucket: string,
+  namespace: string
 ): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    const stream = client.listObjects(bucket, "", true);
+    const stream = client.listObjects(bucket, namespacePrefix(namespace), true);
     const keys: string[] = [];
     stream.on("data", (obj) => {
-      if (obj.name) keys.push(obj.name);
+      if (!obj.name) return;
+      const relative = stripNamespacePrefix(namespace, obj.name);
+      if (!relative || relative === ".keep" || relative === ".namespace") return;
+      keys.push(relative);
     });
     stream.on("end", () => resolve(keys));
     stream.on("error", reject);

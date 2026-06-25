@@ -1,5 +1,6 @@
 import { KEEP_SUFFIX } from "@/lib/files-tree";
 import { REPORTS_BUCKET, SCRIPTS_BUCKET } from "@/lib/minio";
+import { toNamespacedKey } from "@/lib/namespaces";
 
 export interface MoveItem {
   path: string;
@@ -214,25 +215,37 @@ export function buildRenamePlan(input: BuildRenamePlanInput): MovePlan {
 
 export async function executeMovePlan(
   client: MoveClient,
-  plan: MovePlan
+  plan: MovePlan,
+  namespace?: string
 ): Promise<void> {
+  const storageKey = (path: string) =>
+    namespace ? toNamespacedKey(namespace, path) : path;
+
   for (const move of plan.scriptObjectMoves) {
-    await client.copyObject(SCRIPTS_BUCKET, move.to, `/${SCRIPTS_BUCKET}/${move.from}`);
+    await client.copyObject(
+      SCRIPTS_BUCKET,
+      storageKey(move.to),
+      `/${SCRIPTS_BUCKET}/${storageKey(move.from)}`
+    );
   }
   for (const move of plan.reportObjectMoves) {
-    await client.copyObject(REPORTS_BUCKET, move.to, `/${REPORTS_BUCKET}/${move.from}`);
+    await client.copyObject(
+      REPORTS_BUCKET,
+      storageKey(move.to),
+      `/${REPORTS_BUCKET}/${storageKey(move.from)}`
+    );
   }
 
   if (plan.scriptObjectMoves.length > 0) {
     await client.removeObjects(
       SCRIPTS_BUCKET,
-      plan.scriptObjectMoves.map((move) => move.from)
+      plan.scriptObjectMoves.map((move) => storageKey(move.from))
     );
   }
   if (plan.reportObjectMoves.length > 0) {
     await client.removeObjects(
       REPORTS_BUCKET,
-      plan.reportObjectMoves.map((move) => move.from)
+      plan.reportObjectMoves.map((move) => storageKey(move.from))
     );
   }
 }
