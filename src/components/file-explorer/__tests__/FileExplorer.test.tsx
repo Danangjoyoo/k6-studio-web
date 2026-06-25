@@ -101,6 +101,12 @@ function lastFetchBody() {
   return JSON.parse(moveCall[1].body as string);
 }
 
+function lastJsonBody(url: string) {
+  const call = fetchMock.mock.calls.find(([calledUrl]) => calledUrl === url);
+  if (!call) throw new Error(`${url} was not called`);
+  return JSON.parse(call[1].body as string);
+}
+
 async function selectCheckbox(name: string) {
   fireEvent.click(await screen.findByRole("checkbox", { name }));
 }
@@ -367,6 +373,43 @@ describe("FileExplorer", () => {
     expect(screen.queryByRole("checkbox", { name: "Select a.ts" })).not.toBeChecked();
   });
 
+  it("successful unselected file move preserves unrelated selected rows", async () => {
+    moveFetchSequence(scriptsTree(), [
+      {
+        path: "src/",
+        name: "src",
+        type: "folder",
+        children: [{ path: "src/b.ts", name: "b.ts", type: "file" }],
+      },
+      {
+        path: "other/",
+        name: "other",
+        type: "folder",
+        children: [{ path: "other/c.ts", name: "c.ts", type: "file" }],
+      },
+      {
+        path: "dest/",
+        name: "dest",
+        type: "folder",
+        children: [{ path: "dest/a.ts", name: "a.ts", type: "file" }],
+      },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await selectCheckbox("Select c.ts");
+    await dragRowToFolder("src/a.ts", "dest/");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/move",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(screen.getByRole("checkbox", { name: "Select c.ts" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select a.ts" })).not.toBeChecked();
+  });
+
   it("successful folder move updates selected file path when selected file was under the folder", async () => {
     const onFileRenamed = jest.fn();
     moveFetchSequence(scriptsTree());
@@ -466,6 +509,122 @@ describe("FileExplorer", () => {
     await dragRowToFolder("src/", "dest/");
 
     expect(moveApiCalls()).toHaveLength(0);
+  });
+
+  it("renames a file through the rename API and reports the selected path update", async () => {
+    const onFileRenamed = jest.fn();
+    mockFetchSequence(
+      { json: { files: [], tree: scriptsTree() } },
+      { json: {} },
+      {
+        json: {
+          files: [],
+          tree: [
+            {
+              path: "src/",
+              name: "src",
+              type: "folder",
+              children: [
+                { path: "src/renamed.ts", name: "renamed.ts", type: "file" },
+                { path: "src/b.ts", name: "b.ts", type: "file" },
+              ],
+            },
+          ],
+        },
+      }
+    );
+
+    render(
+      <FileExplorer
+        selectedFile="src/a.ts"
+        onSelectFile={jest.fn()}
+        onFileRenamed={onFileRenamed}
+      />
+    );
+
+    const fileRow = await screen.findByText("a.ts").then(() =>
+      screen
+        .getAllByTestId("sidebar-file-item")
+        .find((item) => item.getAttribute("data-path") === "src/a.ts")
+    );
+    if (!fileRow) throw new Error("file row missing");
+
+    fireEvent.doubleClick(fileRow);
+    const input = within(fileRow).getByDisplayValue("a.ts");
+    fireEvent.change(input, { target: { value: "renamed.ts" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/rename",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastJsonBody("/api/files/rename")).toEqual({
+      from: "src/a.ts",
+      to: "src/renamed.ts",
+      type: "file",
+    });
+    await waitFor(() => {
+      expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "src/renamed.ts");
+    });
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
+  });
+
+  it("renames a folder through the rename API and refreshes the tree", async () => {
+    mockFetchSequence(
+      { json: { files: [], tree: scriptsTree() } },
+      { json: {} },
+      {
+        json: {
+          files: [],
+          tree: [
+            {
+              path: "source/",
+              name: "source",
+              type: "folder",
+              children: [
+                { path: "source/a.ts", name: "a.ts", type: "file" },
+                { path: "source/b.ts", name: "b.ts", type: "file" },
+              ],
+            },
+          ],
+        },
+      }
+    );
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const folderRow = await screen.findByText("src").then(() =>
+      screen
+        .getAllByTestId("sidebar-folder-item")
+        .find((item) => item.getAttribute("data-path") === "src/")
+    );
+    if (!folderRow) throw new Error("folder row missing");
+
+    fireEvent.doubleClick(folderRow);
+    const input = within(folderRow).getByDisplayValue("src");
+    fireEvent.change(input, { target: { value: "source" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/files/rename",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    expect(lastJsonBody("/api/files/rename")).toEqual({
+      from: "src",
+      to: "source",
+      type: "folder",
+    });
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/files");
   });
 
   it("opens one folder-scoped script dialog and creates the script under that folder", async () => {

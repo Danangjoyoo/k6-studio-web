@@ -216,7 +216,13 @@ export default function FileExplorer({
       return;
     }
 
-    setSelection({});
+    setSelection((current) => {
+      const next = { ...current };
+      for (const item of items) {
+        delete next[selectionKey(item)];
+      }
+      return next;
+    });
     setMoveStatus(null);
     if (selectedPathUpdate) {
       onFileRenamed?.(selectedPathUpdate.from, selectedPathUpdate.to);
