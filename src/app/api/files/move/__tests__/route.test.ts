@@ -122,6 +122,48 @@ describe("POST /api/files/move", () => {
     expect(mockClient.removeObjects).not.toHaveBeenCalled();
   });
 
+  it("rejects duplicate destination names within the same bulk move", async () => {
+    mockObjects(["a/login.ts", "b/login.ts"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [
+          { path: "a/login.ts", type: "file" },
+          { path: "b/login.ts", type: "file" },
+        ],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Duplicate destination name: login.ts",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects moving a folder and child file in the same request", async () => {
+    mockObjects(["src/a.ts"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [
+          { path: "src", type: "folder" },
+          { path: "src/a.ts", type: "file" },
+        ],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cannot move a folder and one of its children in the same request",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
   it("rejects moving a folder into its own descendant", async () => {
     mockObjects(["src/folder/a.ts"]);
 
@@ -129,6 +171,24 @@ describe("POST /api/files/move", () => {
       jsonRequest({
         items: [{ path: "src/folder", type: "folder" }],
         targetFolder: "src/folder/child",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cannot move a folder into itself or its descendants",
+    });
+    expect(mockClient.copyObject).not.toHaveBeenCalled();
+    expect(mockClient.removeObjects).not.toHaveBeenCalled();
+  });
+
+  it("rejects moving a folder into itself exactly", async () => {
+    mockObjects(["src/a.ts"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "src", type: "folder" }],
+        targetFolder: "src",
       })
     );
 
@@ -207,6 +267,59 @@ describe("POST /api/files/move", () => {
     expect(mockClient.copyObject).toHaveBeenCalledWith(
       REPORTS_BUCKET,
       "dest/a.ts-111.html",
+      `/${REPORTS_BUCKET}/src/a.ts-111.html`
+    );
+    expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
+      "src/a.ts-111.html",
+    ]);
+  });
+
+  it("moves an empty folder backed by a .keep sentinel", async () => {
+    mockObjects(["empty/.keep"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "empty", type: "folder" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      moved: { scripts: 1, reports: 0 },
+    });
+    expect(mockClient.copyObject).toHaveBeenCalledWith(
+      SCRIPTS_BUCKET,
+      "dest/empty/.keep",
+      `/${SCRIPTS_BUCKET}/empty/.keep`
+    );
+    expect(mockClient.removeObjects).toHaveBeenCalledWith(SCRIPTS_BUCKET, [
+      "empty/.keep",
+    ]);
+  });
+
+  it("moves report history objects when moving a folder containing scripts", async () => {
+    mockObjects(["src/a.ts"], ["src/a.ts-111.html"]);
+
+    const response = await POST(
+      jsonRequest({
+        items: [{ path: "src", type: "folder" }],
+        targetFolder: "dest",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      moved: { scripts: 1, reports: 1 },
+    });
+    expect(mockClient.copyObject).toHaveBeenCalledWith(
+      SCRIPTS_BUCKET,
+      "dest/src/a.ts",
+      `/${SCRIPTS_BUCKET}/src/a.ts`
+    );
+    expect(mockClient.copyObject).toHaveBeenCalledWith(
+      REPORTS_BUCKET,
+      "dest/src/a.ts-111.html",
       `/${REPORTS_BUCKET}/src/a.ts-111.html`
     );
     expect(mockClient.removeObjects).toHaveBeenCalledWith(REPORTS_BUCKET, [
