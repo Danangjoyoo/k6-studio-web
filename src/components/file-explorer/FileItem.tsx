@@ -19,6 +19,18 @@ interface FileItemProps {
   onClick: () => void;
   onDelete: () => void;
   onRename: (newPath: string) => Promise<void>;
+  isSelectionChecked?: boolean;
+  isSelectionDisabled?: boolean;
+  onSelectionChange?: (checked: boolean, path: string) => void;
+  isDragEnabled?: boolean;
+  isDragDisabled?: boolean;
+  isDropActive?: boolean;
+  isDropDisabled?: boolean;
+  onRowDragStart?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDragOver?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDrop?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDragEnd?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDragLeave?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
 }
 
 export default function FileItem({
@@ -29,6 +41,18 @@ export default function FileItem({
   onClick,
   onDelete,
   onRename,
+  isSelectionChecked,
+  isSelectionDisabled = false,
+  onSelectionChange,
+  isDragEnabled = false,
+  isDragDisabled = false,
+  isDropActive = false,
+  isDropDisabled = false,
+  onRowDragStart,
+  onRowDragOver,
+  onRowDrop,
+  onRowDragEnd,
+  onRowDragLeave,
 }: FileItemProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(name);
@@ -61,22 +85,64 @@ export default function FileItem({
     }
   }
 
+  function handleSelectionChange(e: React.ChangeEvent<HTMLInputElement>) {
+    e.stopPropagation();
+    if (isSelectionDisabled) return;
+    onSelectionChange?.(e.target.checked, path);
+  }
+
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
+    if (!isDragEnabled || isDragDisabled) {
+      e.preventDefault();
+      return;
+    }
+    onRowDragStart?.(path, e);
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (isDropDisabled) return;
+    e.preventDefault();
+    onRowDragOver?.(path, e);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (isDropDisabled) return;
+    e.preventDefault();
+    onRowDrop?.(path, e);
+  }
+
   return (
     <TooltipProvider>
       <div
         role="button"
         data-testid="sidebar-file-item"
         data-path={path}
+        data-selected={isSelected || isSelectionChecked ? "true" : undefined}
+        data-drop-active={isDropActive ? "true" : undefined}
+        aria-disabled={
+          isSelectionDisabled || isDragDisabled || isDropDisabled ? true : undefined
+        }
+        draggable={isDragEnabled && !isDragDisabled}
         tabIndex={0}
         style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
         className={cn(
           "group mb-0.5 flex cursor-pointer items-center justify-between rounded-r-md border-l-2 py-1.5 pr-2 text-sm transition-colors duration-150",
           isSelected
             ? "border-l-primary bg-sidebar-accent text-sidebar-accent-foreground"
-            : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-sidebar-accent/50 hover:text-foreground"
+            : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-sidebar-accent/50 hover:text-foreground",
+          isDropActive &&
+            !isDropDisabled &&
+            "border-l-primary bg-sidebar-accent/70 text-foreground ring-1 ring-primary/30",
+          isDragDisabled && "cursor-default",
+          isSelectionDisabled && "opacity-75"
         )}
         onClick={onClick}
         onDoubleClick={startEdit}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragEnd={(e) => onRowDragEnd?.(path, e)}
+        onDragLeave={(e) => onRowDragLeave?.(path, e)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -85,6 +151,22 @@ export default function FileItem({
         }}
       >
         <div className="flex min-w-0 items-center gap-2">
+          {onSelectionChange && (
+            <input
+              type="checkbox"
+              aria-label={`Select ${name}`}
+              checked={Boolean(isSelectionChecked)}
+              aria-disabled={isSelectionDisabled}
+              readOnly={isSelectionDisabled}
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 rounded border-border accent-primary",
+                isSelectionDisabled && "cursor-not-allowed opacity-50"
+              )}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onChange={handleSelectionChange}
+            />
+          )}
           <FileCode2 className="h-3.5 w-3.5 shrink-0 text-primary/80" />
           {editing ? (
             <input

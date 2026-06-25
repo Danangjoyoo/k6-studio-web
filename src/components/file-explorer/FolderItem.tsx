@@ -9,6 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface FolderItemProps {
   name: string;
@@ -20,6 +21,18 @@ interface FolderItemProps {
   onCreateScript: (parentPath: string) => void;
   onCreateFolder: (parentPath: string) => void;
   children: React.ReactNode;
+  isSelectionChecked?: boolean;
+  isSelectionDisabled?: boolean;
+  onSelectionChange?: (checked: boolean, path: string) => void;
+  isDragEnabled?: boolean;
+  isDragDisabled?: boolean;
+  isDropActive?: boolean;
+  isDropDisabled?: boolean;
+  onRowDragStart?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDragOver?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDrop?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDragEnd?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onRowDragLeave?: (path: string, event: React.DragEvent<HTMLDivElement>) => void;
 }
 
 export default function FolderItem({
@@ -32,6 +45,18 @@ export default function FolderItem({
   onCreateScript,
   onCreateFolder,
   children,
+  isSelectionChecked,
+  isSelectionDisabled = false,
+  onSelectionChange,
+  isDragEnabled = false,
+  isDragDisabled = false,
+  isDropActive = false,
+  isDropDisabled = false,
+  onRowDragStart,
+  onRowDragOver,
+  onRowDrop,
+  onRowDragEnd,
+  onRowDragLeave,
 }: FolderItemProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -65,6 +90,32 @@ export default function FolderItem({
     }
   }
 
+  function handleSelectionChange(e: React.ChangeEvent<HTMLInputElement>) {
+    e.stopPropagation();
+    if (isSelectionDisabled) return;
+    onSelectionChange?.(e.target.checked, path);
+  }
+
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
+    if (!isDragEnabled || isDragDisabled) {
+      e.preventDefault();
+      return;
+    }
+    onRowDragStart?.(path, e);
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (isDropDisabled) return;
+    e.preventDefault();
+    onRowDragOver?.(path, e);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (isDropDisabled) return;
+    e.preventDefault();
+    onRowDrop?.(path, e);
+  }
+
   return (
     <TooltipProvider>
       <div>
@@ -72,11 +123,29 @@ export default function FolderItem({
           role="button"
           data-testid="sidebar-folder-item"
           data-path={path}
+          data-selected={isSelectionChecked ? "true" : undefined}
+          data-drop-active={isDropActive ? "true" : undefined}
+          aria-disabled={
+            isSelectionDisabled || isDragDisabled || isDropDisabled ? true : undefined
+          }
+          draggable={isDragEnabled && !isDragDisabled}
           tabIndex={0}
           style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
-          className="group mb-0.5 flex cursor-pointer items-center justify-between rounded-r-md border-l-2 border-l-transparent py-1.5 pr-2 text-sm text-muted-foreground transition-colors duration-150 hover:border-l-border hover:bg-sidebar-accent/50 hover:text-foreground"
+          className={cn(
+            "group mb-0.5 flex cursor-pointer items-center justify-between rounded-r-md border-l-2 border-l-transparent py-1.5 pr-2 text-sm text-muted-foreground transition-colors duration-150 hover:border-l-border hover:bg-sidebar-accent/50 hover:text-foreground",
+            isDropActive &&
+              !isDropDisabled &&
+              "border-l-primary bg-sidebar-accent/70 text-foreground ring-1 ring-primary/30",
+            isDragDisabled && "cursor-default",
+            isSelectionDisabled && "opacity-75"
+          )}
           onClick={() => !editing && setOpen((o) => !o)}
           onDoubleClick={startEdit}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onDragEnd={(e) => onRowDragEnd?.(path, e)}
+          onDragLeave={(e) => onRowDragLeave?.(path, e)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -85,6 +154,22 @@ export default function FolderItem({
           }}
         >
           <div className="flex min-w-0 items-center gap-1.5">
+            {onSelectionChange && (
+              <input
+                type="checkbox"
+                aria-label={`Select ${name}`}
+                checked={Boolean(isSelectionChecked)}
+                aria-disabled={isSelectionDisabled}
+                readOnly={isSelectionDisabled}
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 rounded border-border accent-primary",
+                  isSelectionDisabled && "cursor-not-allowed opacity-50"
+                )}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onChange={handleSelectionChange}
+              />
+            )}
             <span className="shrink-0 text-muted-foreground/70">
               {open ? (
                 <ChevronDown className="h-3 w-3" />
