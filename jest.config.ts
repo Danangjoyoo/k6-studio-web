@@ -4,6 +4,7 @@ const config: Config = {
   preset: "ts-jest",
   testEnvironment: "node",
   testPathIgnorePatterns: ["/node_modules/", "/e2e/"],
+  modulePathIgnorePatterns: ["<rootDir>/.next/"],
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",
