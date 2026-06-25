@@ -1,4 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import { Readable } from "stream";
+import {
+  ensureBuckets,
+  getMinioClient,
+  REPORTS_BUCKET,
+} from "../src/lib/minio";
 
 const SHORT_K6_SCRIPT = (marker: string) => `import { sleep } from 'k6';
 
@@ -6,6 +12,19 @@ const SHORT_K6_SCRIPT = (marker: string) => `import { sleep } from 'k6';
 export const options = {
   vus: 1,
   duration: '4s',
+};
+
+export default function () {
+  sleep(1);
+}
+`;
+
+const ACTIVE_LOCK_K6_SCRIPT = (marker: string) => `import { sleep } from 'k6';
+
+// ${marker}
+export const options = {
+  vus: 1,
+  duration: '12s',
 };
 
 export default function () {
@@ -31,6 +50,10 @@ function runnerStatus(page: Page) {
 
 function encodeApiPath(path: string) {
   return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function waitForRunner(page: Page, activeRunners: 0 | 1, timeout = 90_000) {
@@ -64,11 +87,51 @@ async function createScriptViaApi(page: Page, name: string) {
   return marker;
 }
 
+async function createScriptViaApiWithContent(
+  page: Page,
+  name: string,
+  content: string
+) {
+  const response = await page.request.post("/api/files", {
+    data: { name, content },
+  });
+  expect(response.ok()).toBeTruthy();
+  await page.reload();
+  await expect(fileRow(page, name)).toBeVisible({ timeout: 8000 });
+}
+
+async function createReportFixture(reportName: string) {
+  await ensureBuckets();
+  const client = getMinioClient();
+  const html = `<!doctype html><html><body><h1>${reportName}</h1></body></html>`;
+  await client.putObject(
+    REPORTS_BUCKET,
+    reportName,
+    Readable.from([html])
+  );
+}
+
 async function createFolder(page: Page, name: string) {
   await page.getByRole("button", { name: /new folder/i }).first().click();
   await page.getByPlaceholder("folder-name").fill(name);
   await page.getByRole("button", { name: "Create" }).click();
   await expect(folderRow(page, `${name}/`)).toBeVisible({ timeout: 5000 });
+}
+
+async function dispatchDragTo(
+  source: ReturnType<typeof fileRow>,
+  target: ReturnType<typeof folderRow>
+) {
+  const dataTransfer = await source.page().evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent("dragstart", { dataTransfer });
+  await target.dispatchEvent("dragover", { dataTransfer });
+  await target.dispatchEvent("drop", { dataTransfer });
+  await source.dispatchEvent("dragend", { dataTransfer });
+  await dataTransfer.dispose();
+}
+
+async function dragFileToFolder(page: Page, filePath: string, folderPath: string) {
+  await dispatchDragTo(fileRow(page, filePath), folderRow(page, `${folderPath}/`));
 }
 
 async function searchFiles(page: Page, query: string) {
@@ -205,5 +268,95 @@ test.describe("k6 Studio E2E", () => {
     await expect(page.getByRole("button", { name: /run test/i })).toBeEnabled({
       timeout: 5000,
     });
+  });
+
+  test("drag moves a script into a folder", async ({ page }) => {
+    await waitForApp(page);
+    const stamp = Date.now();
+    const script = `drag-move-${stamp}.ts`;
+    const folder = `drag-target-${stamp}`;
+
+    await createScript(page, script);
+    await createFolder(page, folder);
+
+    await dragFileToFolder(page, script, folder);
+
+    await expect(fileRow(page, `${folder}/${script}`)).toBeVisible({
+      timeout: 8000,
+    });
+    await expect(fileRow(page, script)).toHaveCount(0);
+  });
+
+  test("duplicate move is rejected and source remains", async ({ page }) => {
+    await waitForApp(page);
+    const stamp = Date.now();
+    const script = `duplicate-move-${stamp}.ts`;
+    const folder = `duplicate-target-${stamp}`;
+
+    await createFolder(page, folder);
+    await createScriptViaApi(page, script);
+    await createScriptViaApi(page, `${folder}/${script}`);
+
+    await dragFileToFolder(page, script, folder);
+
+    await expect(page.getByRole("status")).toContainText(
+      /Destination.*exists/i,
+      { timeout: 8000 }
+    );
+    await expect(fileRow(page, script)).toBeVisible();
+    await expect(fileRow(page, `${folder}/${script}`)).toBeVisible();
+  });
+
+  test("history remains accessible after moving a script", async ({ page }) => {
+    await waitForApp(page);
+    const stamp = Date.now();
+    const script = `history-move-${stamp}.ts`;
+    const folder = `history-target-${stamp}`;
+    const marker = await createScriptViaApi(page, script);
+    await createFolder(page, folder);
+    await createReportFixture(`${script}-${stamp}.html`);
+    await selectFile(page, script, marker);
+
+    await dragFileToFolder(page, script, folder);
+    const movedPath = `${folder}/${script}`;
+    await expect(fileRow(page, movedPath)).toBeVisible({ timeout: 8000 });
+
+    await fileRow(page, movedPath).click();
+    await expect(page.locator("main")).toContainText(movedPath);
+    await page.getByRole("tab", { name: /test history/i }).click();
+
+    const movedReportName = new RegExp(
+      `${escapeRegExp(folder)}/${escapeRegExp(script)}-\\d+\\.html`
+    );
+    await expect(page.getByText(movedReportName)).toBeVisible({
+      timeout: 15000,
+    });
+  });
+
+  test("running script cannot be moved", async ({ page }) => {
+    await waitForApp(page);
+    const stamp = Date.now();
+    const script = `active-lock-${stamp}.ts`;
+    const folder = `active-target-${stamp}`;
+    const marker = `e2e-marker-${stamp}`;
+    await createScriptViaApiWithContent(
+      page,
+      script,
+      ACTIVE_LOCK_K6_SCRIPT(marker)
+    );
+    await createFolder(page, folder);
+    await selectFile(page, script, marker);
+
+    await page.getByRole("button", { name: /run test/i }).click();
+    await waitForRunner(page, 1, 10000);
+
+    await expect(
+      fileRow(page, script).locator("input[type='checkbox']")
+    ).toBeDisabled();
+    await dragFileToFolder(page, script, folder);
+    await expect(fileRow(page, script)).toBeVisible();
+    await expect(fileRow(page, `${folder}/${script}`)).toHaveCount(0);
+
+    await waitForRunner(page, 0, 70000);
   });
 });
