@@ -103,7 +103,6 @@ export default function LiveDashboardTab({
 
 function dashboardSrc(runId: string | null): string {
   if (!runId) return "/api/dashboard/ui/?endpoint=/api/dashboard/";
-  return `/api/dashboard/ui/?runId=${encodeURIComponent(runId)}&endpoint=${encodeURIComponent(
-    `/api/dashboard/?runId=${runId}`
-  )}`;
+  const basePath = `/api/dashboard/run/${encodeURIComponent(runId)}/`;
+  return `${basePath}ui/?endpoint=${encodeURIComponent(basePath)}`;
 }

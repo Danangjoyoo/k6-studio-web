@@ -71,7 +71,7 @@ describe("LiveDashboardTab", () => {
 
     expect(screen.getByTitle("k6 Live Dashboard")).toHaveAttribute(
       "src",
-      "/api/dashboard/ui/?runId=run_1&endpoint=%2Fapi%2Fdashboard%2F%3FrunId%3Drun_1"
+      "/api/dashboard/run/run_1/ui/?endpoint=%2Fapi%2Fdashboard%2Frun%2Frun_1%2F"
     );
   });
 

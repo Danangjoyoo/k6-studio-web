@@ -38,6 +38,23 @@ describe("dashboard proxy route", () => {
     );
   });
 
+  it("proxies path-scoped dashboard URLs to the requested run id", async () => {
+    mockGetRunById.mockReturnValue({
+      id: "run_1",
+      dashboardPort: 5667,
+    });
+
+    const response = await GET(
+      new Request("http://localhost/api/dashboard/run/run_1/events")
+    );
+
+    expect(response.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:5667/events",
+      expect.any(Object)
+    );
+  });
+
   it("falls back to the oldest active run when run id is missing", async () => {
     mockGetStatus.mockReturnValue({
       runs: [

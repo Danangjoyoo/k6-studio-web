@@ -25,6 +25,22 @@ function resolveDashboardPort(runId: string | null): number {
   return getStatus().runs[0]?.dashboardPort ?? getDashboardBasePort();
 }
 
+function extractRunScopedPath(path: string): {
+  path: string;
+  runId: string | null;
+} {
+  const segments = path.split("/");
+  if (segments[1] !== "run" || !segments[2]) {
+    return { path, runId: null };
+  }
+
+  const scopedPath = `/${segments.slice(3).join("/")}`;
+  return {
+    path: scopedPath,
+    runId: decodeURIComponent(segments[2]),
+  };
+}
+
 async function proxy(request: Request): Promise<Response> {
   const url = new URL(request.url);
   // Reconstruct the upstream path directly from the request URL rather than the
@@ -32,7 +48,11 @@ async function proxy(request: Request): Promise<Response> {
   // the dashboard HTML, while `/ui` 301-redirects away).
   let path = url.pathname.slice(DASHBOARD_PROXY_PREFIX.length);
   if (path === "") path = "/";
-  const dashboardPort = resolveDashboardPort(url.searchParams.get("runId"));
+  const scoped = extractRunScopedPath(path);
+  path = scoped.path;
+  const dashboardPort = resolveDashboardPort(
+    scoped.runId ?? url.searchParams.get("runId")
+  );
   const target = `http://127.0.0.1:${dashboardPort}${path}${url.search}`;
 
   try {
