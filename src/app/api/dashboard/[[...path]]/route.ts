@@ -7,10 +7,7 @@ import {
   sanitizeDashboardHeaders,
   shouldRewriteDashboardBody,
 } from "@/lib/dashboard-proxy";
-
-const DASHBOARD_ORIGIN = `http://127.0.0.1:${
-  process.env.K6_DASHBOARD_PORT ?? "5665"
-}`;
+import { getDashboardBasePort, getRunById, getStatus } from "@/lib/run-lock";
 
 function buildProxyHeaders(request: Request): HeadersInit {
   const headers = new Headers(request.headers);
@@ -20,6 +17,14 @@ function buildProxyHeaders(request: Request): HeadersInit {
   return headers;
 }
 
+function resolveDashboardPort(runId: string | null): number {
+  if (runId) {
+    const run = getRunById(runId);
+    if (run) return run.dashboardPort;
+  }
+  return getStatus().runs[0]?.dashboardPort ?? getDashboardBasePort();
+}
+
 async function proxy(request: Request): Promise<Response> {
   const url = new URL(request.url);
   // Reconstruct the upstream path directly from the request URL rather than the
@@ -27,7 +32,8 @@ async function proxy(request: Request): Promise<Response> {
   // the dashboard HTML, while `/ui` 301-redirects away).
   let path = url.pathname.slice(DASHBOARD_PROXY_PREFIX.length);
   if (path === "") path = "/";
-  const target = `${DASHBOARD_ORIGIN}${path}${url.search}`;
+  const dashboardPort = resolveDashboardPort(url.searchParams.get("runId"));
+  const target = `http://127.0.0.1:${dashboardPort}${path}${url.search}`;
 
   try {
     const upstream = await fetch(target, {
@@ -58,7 +64,7 @@ async function proxy(request: Request): Promise<Response> {
     const text = await upstream.text();
     const rewritten = rewriteDashboardBody(text, {
       requestHost: url.host,
-      dashboardPort: process.env.K6_DASHBOARD_PORT ?? "5665",
+      dashboardPort: String(dashboardPort),
     });
     return new Response(rewritten, { status: upstream.status, headers });
   } catch {

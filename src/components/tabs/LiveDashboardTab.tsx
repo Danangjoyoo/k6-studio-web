@@ -8,15 +8,16 @@ export interface LiveDashboardTabProps {
   scriptName: string | null;
   isActiveRun: boolean;
   runEpoch: number;
+  runId?: string | null;
 }
 
 const RETRY_MS = 2000;
-const DASHBOARD_SRC = "/api/dashboard/ui/?endpoint=/api/dashboard/";
 
 export default function LiveDashboardTab({
   scriptName,
   isActiveRun,
   runEpoch,
+  runId = null,
 }: LiveDashboardTabProps) {
   const [retryKey, setRetryKey] = useState(0);
   const [dashboardReady, setDashboardReady] = useState(false);
@@ -26,7 +27,7 @@ export default function LiveDashboardTab({
     setRetryKey(0);
     setDashboardReady(false);
     hadFailedProbeRef.current = false;
-  }, [isActiveRun, scriptName, runEpoch]);
+  }, [isActiveRun, scriptName, runEpoch, runId]);
 
   useEffect(() => {
     if (!scriptName || !isActiveRun || dashboardReady) return;
@@ -35,7 +36,7 @@ export default function LiveDashboardTab({
 
     async function probeDashboard(remountOnFailure: boolean) {
       try {
-        const response = await fetch(DASHBOARD_SRC, { cache: "no-store" });
+        const response = await fetch(dashboardSrc(runId), { cache: "no-store" });
         if (cancelled) return;
 
         if (response.ok) {
@@ -66,7 +67,7 @@ export default function LiveDashboardTab({
       cancelled = true;
       clearInterval(retry);
     };
-  }, [dashboardReady, isActiveRun, scriptName, runEpoch]);
+  }, [dashboardReady, isActiveRun, scriptName, runEpoch, runId]);
 
   if (!scriptName) {
     return (
@@ -92,10 +93,17 @@ export default function LiveDashboardTab({
     <div className="h-full bg-panel p-2">
       <iframe
         key={`${scriptName}-${runEpoch}-${retryKey}`}
-        src={DASHBOARD_SRC}
+        src={dashboardSrc(runId)}
         className="h-full w-full rounded-md border border-border ring-1 ring-border"
         title="k6 Live Dashboard"
       />
     </div>
   );
+}
+
+function dashboardSrc(runId: string | null): string {
+  if (!runId) return "/api/dashboard/ui/?endpoint=/api/dashboard/";
+  return `/api/dashboard/ui/?runId=${encodeURIComponent(runId)}&endpoint=${encodeURIComponent(
+    `/api/dashboard/?runId=${runId}`
+  )}`;
 }

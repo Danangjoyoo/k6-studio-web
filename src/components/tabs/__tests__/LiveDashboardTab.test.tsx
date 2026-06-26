@@ -57,6 +57,24 @@ describe("LiveDashboardTab", () => {
     expect(iframe.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
   });
 
+  it("renders a run-specific dashboard iframe when run id is provided", () => {
+    global.fetch = jest.fn(() => new Promise(() => undefined)) as jest.Mock;
+
+    render(
+      <LiveDashboardTab
+        scriptName="smoke.js"
+        isActiveRun={true}
+        runEpoch={1}
+        runId="run_1"
+      />
+    );
+
+    expect(screen.getByTitle("k6 Live Dashboard")).toHaveAttribute(
+      "src",
+      "/api/dashboard/ui/?runId=run_1&endpoint=%2Fapi%2Fdashboard%2F%3FrunId%3Drun_1"
+    );
+  });
+
   it("does not render the iframe when the selected script is not actively running", () => {
     render(
       <LiveDashboardTab
