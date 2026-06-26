@@ -1,87 +1,79 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  FileText,
-  Plus,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { Eye, FileText, Pencil, Plus, Save, X } from "lucide-react";
 import EmptyState from "@/components/layout/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import MarkdownPreview from "@/components/tabs/MarkdownPreview";
 import { cn } from "@/lib/utils";
-import type { ReportPreviewCustomTab } from "@/lib/report-tabs";
+import type { ReportNote } from "@/lib/report-notes";
 
 interface TestHistoryReportPreviewProps {
   namespace: string;
   reportName: string | null;
 }
 
-type PreviewTab = ReportPreviewCustomTab & {
+type NoteTab = ReportNote & {
   persisted: boolean;
-  inputUrl: string;
-  currentUrl: string;
-  history: string[];
-  historyIndex: number;
-  reloadNonce: number;
+  dirty: boolean;
+  preview: boolean;
   error: string | null;
 };
 
 const SUMMARY_TAB_ID = "summary";
+const UNTITLED_NOTE = "Untitled note";
 
 export default function TestHistoryReportPreview({
   namespace,
   reportName,
 }: TestHistoryReportPreviewProps) {
-  const [tabs, setTabs] = useState<PreviewTab[]>([]);
+  const [notes, setNotes] = useState<NoteTab[]>([]);
   const [activeTabId, setActiveTabId] = useState(SUMMARY_TAB_ID);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [loadingTabs, setLoadingTabs] = useState(false);
+  const [loadingNotes, setLoadingNotes] = useState(false);
   const requestIdRef = useRef(0);
-  const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!reportName) return;
 
     const requestId = ++requestIdRef.current;
-    setLoadingTabs(true);
+    setLoadingNotes(true);
     setSaveError(null);
-    setTabs([]);
+    setNotes([]);
     setActiveTabId(SUMMARY_TAB_ID);
 
-    fetch(reportTabsApiUrl(reportName, namespace))
+    fetch(reportNotesApiUrl(reportName, namespace))
       .then(async (response) => {
-        if (!response.ok) return { tabs: [] };
-        return (await response.json()) as { tabs?: ReportPreviewCustomTab[] };
+        if (!response.ok) return { notes: [] };
+        return (await response.json()) as { notes?: ReportNote[] };
       })
       .then((data) => {
         if (requestId !== requestIdRef.current) return;
-        setTabs((data.tabs ?? []).map(toPreviewTab));
+        setNotes((data.notes ?? []).map(toNoteTab));
       })
       .catch(() => {
         if (requestId === requestIdRef.current) {
-          setTabs([]);
-          setSaveError("Could not load preview tabs");
+          setNotes([]);
+          setSaveError("Could not load report notes");
         }
       })
       .finally(() => {
         if (requestId === requestIdRef.current) {
-          setLoadingTabs(false);
+          setLoadingNotes(false);
         }
       });
   }, [namespace, reportName]);
 
-  const activeTab = useMemo(
-    () => tabs.find((tab) => tab.id === activeTabId) ?? null,
-    [activeTabId, tabs]
+  const activeNote = useMemo(
+    () => notes.find((note) => note.id === activeTabId) ?? null,
+    [activeTabId, notes]
   );
 
   useEffect(() => {
     if (activeTabId !== SUMMARY_TAB_ID) {
-      activeInputRef.current?.focus();
+      titleInputRef.current?.focus();
     }
   }, [activeTabId]);
 
@@ -95,134 +87,153 @@ export default function TestHistoryReportPreview({
     );
   }
 
-  function handleAddTab() {
-    const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const draft: PreviewTab = {
+  function handleAddNote() {
+    const id = `note_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const draft: NoteTab = {
       id,
-      title: "New tab",
-      url: "",
+      title: UNTITLED_NOTE,
+      markdown: "",
       persisted: false,
-      inputUrl: "",
-      currentUrl: "",
-      history: [],
-      historyIndex: -1,
-      reloadNonce: 0,
+      dirty: true,
+      preview: false,
       error: null,
     };
-    setTabs((current) => [...current, draft]);
+    setNotes((current) => [...current, draft]);
     setActiveTabId(id);
   }
 
-  function handleCloseTab(id: string) {
-    const closing = tabs.find((tab) => tab.id === id);
-    const nextTabs = tabs.filter((tab) => tab.id !== id);
-    setTabs(nextTabs);
+  function handleCloseNote(id: string) {
+    const closing = notes.find((note) => note.id === id);
+    const nextNotes = notes.filter((note) => note.id !== id);
+    setNotes(nextNotes);
     if (activeTabId === id) {
       setActiveTabId(SUMMARY_TAB_ID);
     }
     if (closing?.persisted) {
-      void persistTabs(nextTabs);
+      void persistNotes(nextNotes);
     }
   }
 
-  function handleInputChange(id: string, value: string) {
-    setTabs((current) =>
-      current.map((tab) =>
-        tab.id === id ? { ...tab, inputUrl: value, error: null } : tab
+  function updateNote(id: string, patch: Partial<NoteTab>) {
+    setNotes((current) =>
+      current.map((note) =>
+        note.id === id
+          ? {
+              ...note,
+              ...patch,
+              dirty: patch.dirty ?? true,
+              error: patch.error ?? null,
+            }
+          : note
       )
     );
   }
 
-  function handleSubmitUrl(id: string) {
-    const tab = tabs.find((item) => item.id === id);
-    if (!tab) return;
-
-    const normalized = normalizeCustomUrl(tab.inputUrl);
-    if (!normalized) {
-      setTabs((current) =>
-        current.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                error: "Only http and https URLs are supported",
-              }
-            : item
-        )
-      );
-      return;
-    }
-
-    const title = new URL(normalized).hostname;
-    const history = tab.history.slice(0, tab.historyIndex + 1);
-    history.push(normalized);
-    const nextTabs = tabs.map((item) =>
-      item.id === id
+  function handleSaveNote(id: string) {
+    const nextNotes = notes.map((note) =>
+      note.id === id
         ? {
-            ...item,
-            url: normalized,
-            title,
+            ...note,
+            title: note.title.trim() || UNTITLED_NOTE,
             persisted: true,
-            inputUrl: normalized,
-            currentUrl: normalized,
-            history,
-            historyIndex: history.length - 1,
+            dirty: false,
             error: null,
           }
-        : item
+        : note
     );
-    setTabs(nextTabs);
-    setActiveTabId(id);
-    void persistTabs(nextTabs);
+    setNotes(nextNotes);
+    void persistNotes(nextNotes);
   }
 
-  function moveHistory(id: string, direction: -1 | 1) {
-    setTabs((current) =>
-      current.map((tab) => {
-        if (tab.id !== id) return tab;
-        const nextIndex = tab.historyIndex + direction;
-        if (nextIndex < 0 || nextIndex >= tab.history.length) return tab;
-        const nextUrl = tab.history[nextIndex];
-        return {
-          ...tab,
-          historyIndex: nextIndex,
-          currentUrl: nextUrl,
-          inputUrl: nextUrl,
-        };
-      })
+  function togglePreview(id: string, preview: boolean) {
+    setNotes((current) =>
+      current.map((note) => (note.id === id ? { ...note, preview } : note))
     );
   }
 
-  function reloadTab(id: string) {
-    setTabs((current) =>
-      current.map((tab) =>
-        tab.id === id ? { ...tab, reloadNonce: tab.reloadNonce + 1 } : tab
-      )
+  function handleEditorPaste(
+    event: ClipboardEvent<HTMLTextAreaElement>,
+    noteId: string
+  ) {
+    const imageItem = Array.from(event.clipboardData.items).find((item) =>
+      item.type.startsWith("image/")
     );
+    const file = imageItem?.getAsFile();
+    if (!file) return;
+
+    event.preventDefault();
+    const start = event.currentTarget.selectionStart;
+    const end = event.currentTarget.selectionEnd;
+    void uploadPastedImage(noteId, file, start, end);
   }
 
-  async function persistTabs(nextTabs: PreviewTab[]) {
+  async function uploadPastedImage(
+    noteId: string,
+    file: File,
+    start: number,
+    end: number
+  ) {
+    if (!reportName) return;
+    const formData = new FormData();
+    formData.set("file", file);
+
+    try {
+      const response = await fetch(noteAssetsApiUrl(reportName, namespace), {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error("upload failed");
+      }
+      const body = (await response.json()) as { url?: string };
+      if (!body.url) {
+        throw new Error("upload failed");
+      }
+      const snippet = `![pasted image](${body.url})`;
+      setNotes((current) =>
+        current.map((note) =>
+          note.id === noteId
+            ? {
+                ...note,
+                markdown: insertAt(note.markdown, snippet, start, end),
+                dirty: true,
+                error: null,
+              }
+            : note
+        )
+      );
+    } catch {
+      updateNote(noteId, { error: "Could not upload pasted image" });
+    }
+  }
+
+  async function persistNotes(nextNotes: NoteTab[]) {
     if (!reportName) return;
     setSaveError(null);
-    const response = await fetch(reportTabsApiUrl(reportName, namespace), {
+    const response = await fetch(reportNotesApiUrl(reportName, namespace), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        tabs: nextTabs
-          .filter((tab) => tab.persisted)
-          .map(({ id, url, title }) => ({ id, url, title })),
+        notes: nextNotes
+          .filter((note) => note.persisted)
+          .map(({ id, title, markdown }) => ({ id, title, markdown })),
       }),
     });
     if (!response.ok) {
-      setSaveError("Could not save preview tabs");
+      setSaveError("Could not save report notes");
     }
   }
 
-  const summarySelected = activeTabId === SUMMARY_TAB_ID || !activeTab;
+  const summarySelected = activeTabId === SUMMARY_TAB_ID || !activeNote;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-panel">
       <div className="flex shrink-0 items-end gap-1 border-b border-border bg-panel-raised px-2 pt-2">
-        <div role="tablist" aria-label="Report preview tabs" className="flex min-w-0 flex-1 items-end gap-1">
+        <div
+          role="tablist"
+          aria-label="Report preview tabs"
+          className="flex min-w-0 flex-1 items-end gap-1"
+        >
           <button
             type="button"
             role="tab"
@@ -233,44 +244,44 @@ export default function TestHistoryReportPreview({
             Summary
           </button>
 
-          {tabs.map((tab) => {
-            const selected = activeTabId === tab.id;
+          {notes.map((note) => {
+            const selected = activeTabId === note.id;
             return (
-              <div key={tab.id} className="flex min-w-0 items-center">
+              <div key={note.id} className="flex min-w-0 items-center">
                 <button
                   type="button"
                   role="tab"
                   aria-selected={selected}
                   className={cn(tabClassName(selected), "max-w-48")}
-                  onClick={() => setActiveTabId(tab.id)}
+                  onClick={() => setActiveTabId(note.id)}
                 >
-                  <span className="truncate">{tab.title}</span>
+                  <span className="truncate">{note.title || UNTITLED_NOTE}</span>
                 </button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-xs"
                   className="mb-1 -ml-7 h-5 w-5 text-muted-foreground hover:text-foreground"
-                  aria-label={`Close tab ${tab.title}`}
-                  onClick={() => handleCloseTab(tab.id)}
+                  aria-label={`Close note ${note.title || UNTITLED_NOTE}`}
+                  onClick={() => handleCloseNote(note.id)}
                 >
                   <X className="h-3 w-3" />
                 </Button>
               </div>
             );
           })}
-        </div>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="mb-1"
-          aria-label="Add preview tab"
-          onClick={handleAddTab}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="mb-1 shrink-0"
+            aria-label="Add note"
+            onClick={handleAddNote}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {saveError && (
@@ -290,83 +301,69 @@ export default function TestHistoryReportPreview({
           />
         </div>
       ) : (
-        activeTab && (
+        activeNote && (
           <div className="flex min-h-0 flex-1 flex-col">
-            <form
-              className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-2 py-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSubmitUrl(activeTab.id);
-              }}
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Back"
-                disabled={activeTab.historyIndex <= 0}
-                onClick={() => moveHistory(activeTab.id, -1)}
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Forward"
-                disabled={activeTab.historyIndex >= activeTab.history.length - 1}
-                onClick={() => moveHistory(activeTab.id, 1)}
-              >
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Reload"
-                disabled={!activeTab.currentUrl}
-                onClick={() => reloadTab(activeTab.id)}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
+            <div className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-2 py-2">
               <Input
-                ref={activeInputRef}
-                aria-label="Preview tab URL"
-                className="h-7 flex-1 font-mono text-xs"
-                placeholder="https://example.com/dashboard"
-                value={activeTab.inputUrl}
+                ref={titleInputRef}
+                aria-label="Note title"
+                className="h-7 max-w-80 font-mono text-xs"
+                value={activeNote.title}
                 onChange={(event) =>
-                  handleInputChange(activeTab.id, event.target.value)
+                  updateNote(activeNote.id, { title: event.target.value })
                 }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    handleSubmitUrl(activeTab.id);
-                  }
-                }}
               />
-            </form>
+              <div className="flex-1" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={activeNote.preview ? "Edit note" : "Preview note"}
+                onClick={() => togglePreview(activeNote.id, !activeNote.preview)}
+              >
+                {activeNote.preview ? (
+                  <Pencil className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+                {activeNote.preview ? "Edit" : "Preview"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                aria-label="Save note"
+                onClick={() => handleSaveNote(activeNote.id)}
+              >
+                <Save className="h-3.5 w-3.5" />
+                Save
+              </Button>
+            </div>
 
-            {activeTab.error && (
+            {activeNote.error && (
               <p role="alert" className="border-b border-border px-3 py-1 font-mono text-xs text-destructive">
-                {activeTab.error}
+                {activeNote.error}
               </p>
             )}
 
             <div className="min-h-0 flex-1 p-3">
-              {activeTab.currentUrl ? (
-                <iframe
-                  key={`${activeTab.id}-${activeTab.reloadNonce}-${activeTab.currentUrl}`}
-                  src={activeTab.currentUrl}
-                  className="h-full w-full rounded-md border border-border bg-white ring-1 ring-border"
-                  title={`Preview tab: ${activeTab.title}`}
-                  sandbox="allow-scripts allow-same-origin"
-                />
+              {activeNote.preview ? (
+                <div className="h-full overflow-auto rounded-md border border-border bg-panel px-4 py-3 ring-1 ring-border">
+                  <MarkdownPreview markdown={activeNote.markdown} />
+                </div>
               ) : (
-                <EmptyState
-                  icon={FileText}
-                  title={loadingTabs ? "Loading tabs" : "Enter a URL"}
-                  description="Paste an http or https URL to open it in this preview tab."
+                <textarea
+                  aria-label="Markdown note"
+                  className="h-full w-full resize-none rounded-md border border-border bg-panel px-3 py-2 font-mono text-xs text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:border-primary"
+                  placeholder={
+                    loadingNotes
+                      ? "Loading notes..."
+                      : "Write Markdown notes. Paste an image to upload it."
+                  }
+                  value={activeNote.markdown}
+                  onChange={(event) =>
+                    updateNote(activeNote.id, { markdown: event.target.value })
+                  }
+                  onPaste={(event) => handleEditorPaste(event, activeNote.id)}
                 />
               )}
             </div>
@@ -377,35 +374,33 @@ export default function TestHistoryReportPreview({
   );
 }
 
-function toPreviewTab(tab: ReportPreviewCustomTab): PreviewTab {
+function toNoteTab(note: ReportNote): NoteTab {
   return {
-    ...tab,
+    ...note,
+    title: note.title || UNTITLED_NOTE,
     persisted: true,
-    inputUrl: tab.url,
-    currentUrl: tab.url,
-    history: [tab.url],
-    historyIndex: 0,
-    reloadNonce: 0,
+    dirty: false,
+    preview: false,
     error: null,
   };
 }
 
-function normalizeCustomUrl(value: string): string | null {
-  try {
-    const url = new URL(value.trim());
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
+function insertAt(value: string, insertion: string, start: number, end: number): string {
+  const safeStart = Math.max(0, Math.min(start, value.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, value.length));
+  return `${value.slice(0, safeStart)}${insertion}${value.slice(safeEnd)}`;
 }
 
 function reportSummaryUrl(reportName: string, namespace: string): string {
   return `/api/reports/${encodeURIComponent(reportName)}?${namespaceQuery(namespace)}`;
 }
 
-function reportTabsApiUrl(reportName: string, namespace: string): string {
-  return `/api/reports/${encodeURIComponent(reportName)}/tabs?${namespaceQuery(namespace)}`;
+function reportNotesApiUrl(reportName: string, namespace: string): string {
+  return `/api/reports/${encodeURIComponent(reportName)}/notes?${namespaceQuery(namespace)}`;
+}
+
+function noteAssetsApiUrl(reportName: string, namespace: string): string {
+  return `/api/reports/${encodeURIComponent(reportName)}/note-assets?${namespaceQuery(namespace)}`;
 }
 
 function namespaceQuery(namespace: string): string {

@@ -8,18 +8,27 @@ import TestHistoryReportPreview from "@/components/tabs/TestHistoryReportPreview
 const fetchMock = jest.fn();
 global.fetch = fetchMock as jest.Mock;
 
-function mockTabs(tabs: unknown[] = []) {
+function mockNotes(notes: unknown[] = []) {
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-    if (String(url).includes("/tabs") && init?.method === "PUT") {
+    if (String(url).includes("/note-assets") && init?.method === "POST") {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          assetId: "asset_paste.png",
+          url: "/api/reports/smoke.ts-1.html/note-assets/asset_paste.png?namespace=team-a",
+        }),
+      });
+    }
+    if (String(url).includes("/notes") && init?.method === "PUT") {
       return Promise.resolve({
         ok: true,
         json: async () => JSON.parse(String(init.body)),
       });
     }
-    if (String(url).includes("/tabs")) {
+    if (String(url).includes("/notes")) {
       return Promise.resolve({
         ok: true,
-        json: async () => ({ tabs }),
+        json: async () => ({ notes }),
       });
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -38,7 +47,7 @@ describe("TestHistoryReportPreview", () => {
   });
 
   it("renders a pinned summary tab without a close button", async () => {
-    mockTabs();
+    mockNotes();
 
     render(
       <TestHistoryReportPreview
@@ -52,7 +61,7 @@ describe("TestHistoryReportPreview", () => {
       "true"
     );
     expect(
-      screen.queryByRole("button", { name: "Close tab Summary" })
+      screen.queryByRole("button", { name: "Close note Summary" })
     ).not.toBeInTheDocument();
     expect(screen.getByTitle("api/smoke.ts-111.html")).toHaveAttribute(
       "src",
@@ -60,66 +69,29 @@ describe("TestHistoryReportPreview", () => {
     );
   });
 
-  it("creates a focused draft tab from the add button without persisting", async () => {
-    mockTabs();
+  it("creates a focused draft note from the add button without persisting", async () => {
+    mockNotes();
 
     render(
       <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add preview tab" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
 
-    expect(screen.getByRole("tab", { name: "New tab" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Untitled note" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
-    expect(screen.getByLabelText("Preview tab URL")).toHaveFocus();
+    expect(screen.getByLabelText("Note title")).toHaveFocus();
     expect(putBodies()).toEqual([]);
   });
 
-  it("persists a submitted custom URL tab and renders its iframe", async () => {
-    mockTabs();
-
-    render(
-      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Add preview tab" }));
-    fireEvent.change(screen.getByLabelText("Preview tab URL"), {
-      target: { value: "https://grafana.example/d/a" },
-    });
-    fireEvent.keyDown(screen.getByLabelText("Preview tab URL"), {
-      key: "Enter",
-    });
-
-    await waitFor(() => {
-      expect(putBodies()).toHaveLength(1);
-    });
-    expect(putBodies()[0]).toEqual({
-      tabs: [
-        {
-          id: expect.stringMatching(/^tab_/),
-          url: "https://grafana.example/d/a",
-          title: "grafana.example",
-        },
-      ],
-    });
-    expect(screen.getByRole("tab", { name: "grafana.example" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    expect(screen.getByTitle("Preview tab: grafana.example")).toHaveAttribute(
-      "src",
-      "https://grafana.example/d/a"
-    );
-  });
-
-  it("closes a persisted custom tab and saves the remaining tab list", async () => {
-    mockTabs([
+  it("places the add button after summary and note tabs", async () => {
+    mockNotes([
       {
-        id: "tab_1",
-        url: "https://grafana.example/d/a",
-        title: "grafana.example",
+        id: "note_1",
+        title: "Findings",
+        markdown: "## ok",
       },
     ]);
 
@@ -127,12 +99,70 @@ describe("TestHistoryReportPreview", () => {
       <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
     );
 
+    const tabList = await screen.findByRole("tablist", {
+      name: "Report preview tabs",
+    });
+    await screen.findByRole("tab", { name: "Findings" });
+    expect(
+      Array.from(tabList.children).map((child) => child.textContent?.trim())
+    ).toEqual(["Summary", "Findings", ""]);
+    expect(tabList.lastElementChild).toBe(
+      screen.getByRole("button", { name: "Add note" })
+    );
+  });
+
+  it("saves a markdown note and renders its preview", async () => {
+    mockNotes();
+
+    render(
+      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    fireEvent.change(screen.getByLabelText("Note title"), {
+      target: { value: "Investigation" },
+    });
+    fireEvent.change(screen.getByLabelText("Markdown note"), {
+      target: { value: "# Findings\n- p95 is high\n![chart](/chart.png)" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+
+    await waitFor(() => {
+      expect(putBodies()).toHaveLength(1);
+    });
+    expect(putBodies()[0]).toEqual({
+      notes: [
+        {
+          id: expect.stringMatching(/^note_/),
+          title: "Investigation",
+          markdown: "# Findings\n- p95 is high\n![chart](/chart.png)",
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview note" }));
+    expect(screen.getByRole("heading", { name: "Findings" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "chart" })).toHaveAttribute(
+      "src",
+      "/chart.png"
+    );
+  });
+
+  it("closes a persisted note and saves the remaining note list", async () => {
+    mockNotes([
+      { id: "note_1", title: "Findings", markdown: "## ok" },
+    ]);
+
+    render(
+      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
+    );
+
     fireEvent.click(
-      await screen.findByRole("button", { name: "Close tab grafana.example" })
+      await screen.findByRole("button", { name: "Close note Findings" })
     );
 
     await waitFor(() => {
-      expect(putBodies()).toEqual([{ tabs: [] }]);
+      expect(putBodies()).toEqual([{ notes: [] }]);
     });
     expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute(
       "aria-selected",
@@ -140,42 +170,41 @@ describe("TestHistoryReportPreview", () => {
     );
   });
 
-  it("keeps back and forward history local to the browser session", async () => {
-    mockTabs();
+  it("uploads a pasted image and inserts markdown image syntax", async () => {
+    mockNotes();
 
     render(
       <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add preview tab" }));
-    fireEvent.change(screen.getByLabelText("Preview tab URL"), {
-      target: { value: "https://one.example/a" },
-    });
-    fireEvent.keyDown(screen.getByLabelText("Preview tab URL"), {
-      key: "Enter",
-    });
-    await waitFor(() => expect(putBodies()).toHaveLength(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    const editor = screen.getByLabelText("Markdown note");
+    fireEvent.change(editor, { target: { value: "Before\n" } });
 
-    fireEvent.change(screen.getByLabelText("Preview tab URL"), {
-      target: { value: "https://two.example/b" },
+    const file = new File([new Uint8Array([1, 2, 3])], "paste.png", {
+      type: "image/png",
     });
-    fireEvent.keyDown(screen.getByLabelText("Preview tab URL"), {
-      key: "Enter",
+    fireEvent.paste(editor, {
+      clipboardData: {
+        items: [
+          {
+            type: "image/png",
+            getAsFile: () => file,
+          },
+        ],
+      },
     });
-    await waitFor(() => expect(putBodies()).toHaveLength(2));
 
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByTitle("Preview tab: two.example")).toHaveAttribute(
-      "src",
-      "https://one.example/a"
-    );
-    expect(putBodies()).toHaveLength(2);
-
-    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
-    expect(screen.getByTitle("Preview tab: two.example")).toHaveAttribute(
-      "src",
-      "https://two.example/b"
-    );
-    expect(putBodies()).toHaveLength(2);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/reports/smoke.ts-1.html/note-assets?namespace=team-a",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Markdown note")).toHaveValue(
+        "Before\n![pasted image](/api/reports/smoke.ts-1.html/note-assets/asset_paste.png?namespace=team-a)"
+      );
+    });
   });
 });
