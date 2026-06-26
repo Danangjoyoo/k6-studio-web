@@ -43,6 +43,28 @@ describe("run-lock", () => {
     expect(getRunnerCapacity()).toBe(1);
   });
 
+  it("caps TOTAL_RUNNERS at twenty fixed dashboard slots", () => {
+    process.env.TOTAL_RUNNERS = "25";
+
+    expect(getRunnerCapacity()).toBe(20);
+    const runs = Array.from({ length: 20 }, (_value, index) =>
+      tryAcquire(`script-${index}.ts`)
+    );
+
+    expect(runs).toHaveLength(20);
+    expect(runs[0]).toMatchObject({ runnerIndex: 0, dashboardPort: 5665 });
+    expect(runs[19]).toMatchObject({ runnerIndex: 19, dashboardPort: 5684 });
+    expect(tryAcquire("script-20.ts")).toBeNull();
+  });
+
+  it("uses fixed dashboard ports instead of K6_DASHBOARD_PORT", () => {
+    process.env.K6_DASHBOARD_PORT = "5999";
+    process.env.TOTAL_RUNNERS = "2";
+
+    expect(tryAcquire("a.ts")).toMatchObject({ dashboardPort: 5665 });
+    expect(tryAcquire("b.ts")).toMatchObject({ dashboardPort: 5666 });
+  });
+
   it("allows acquiring when nothing is running", () => {
     expect(tryAcquire("script.ts")).toMatchObject({
       namespace: "default",

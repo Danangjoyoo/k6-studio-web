@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 import { stat } from "fs/promises";
 import { createConnection } from "net";
+import { DASHBOARD_BASE_PORT } from "@/lib/run-lock";
 
 export const K6_BIN = process.env.K6_BIN ?? "k6";
 
@@ -12,7 +13,7 @@ export function getK6RunEnv(
   reportPath: string,
   dashboardPort?: number
 ): Record<string, string> {
-  const port = String(dashboardPort ?? process.env.K6_DASHBOARD_PORT ?? "5665");
+  const port = String(dashboardPort ?? DASHBOARD_BASE_PORT);
   return {
     K6_WEB_DASHBOARD: "true",
     K6_WEB_DASHBOARD_HOST: process.env.K6_WEB_DASHBOARD_HOST ?? "0.0.0.0",

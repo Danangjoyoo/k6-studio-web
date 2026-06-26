@@ -35,8 +35,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/scripts/docker-server.mjs ./scripts/docker-server.mjs
+COPY --from=builder /app/scripts/docker-dashboard-routing.cjs ./scripts/docker-dashboard-routing.cjs
 RUN npm install http-proxy@^1.18.1 --omit=dev --no-save
 
-EXPOSE 3000 5665
+EXPOSE 3000 5665-5684
 
 CMD ["node", "scripts/docker-server.mjs"]

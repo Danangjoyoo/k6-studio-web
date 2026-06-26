@@ -17,10 +17,10 @@ function buildProxyHeaders(request: Request): HeadersInit {
   return headers;
 }
 
-function resolveDashboardPort(runId: string | null): number {
+function resolveDashboardPort(runId: string | null): number | null {
   if (runId) {
     const run = getRunById(runId);
-    if (run) return run.dashboardPort;
+    return run?.dashboardPort ?? null;
   }
   return getStatus().runs[0]?.dashboardPort ?? getDashboardBasePort();
 }
@@ -50,9 +50,14 @@ async function proxy(request: Request): Promise<Response> {
   if (path === "") path = "/";
   const scoped = extractRunScopedPath(path);
   path = scoped.path;
-  const dashboardPort = resolveDashboardPort(
-    scoped.runId ?? url.searchParams.get("runId")
-  );
+  const requestedRunId = scoped.runId ?? url.searchParams.get("runId");
+  const dashboardPort = resolveDashboardPort(requestedRunId);
+  if (dashboardPort === null) {
+    return new Response("k6 dashboard run not found", { status: 404 });
+  }
+  const proxyPrefix = requestedRunId
+    ? `${DASHBOARD_PROXY_PREFIX}/run/${encodeURIComponent(requestedRunId)}`
+    : DASHBOARD_PROXY_PREFIX;
   const target = `http://127.0.0.1:${dashboardPort}${path}${url.search}`;
 
   try {
@@ -69,7 +74,10 @@ async function proxy(request: Request): Promise<Response> {
     const contentType = upstream.headers.get("content-type");
     const headers = sanitizeDashboardHeaders(upstream.headers);
 
-    const location = rewriteDashboardLocation(upstream.headers.get("location"));
+    const location = rewriteDashboardLocation(
+      upstream.headers.get("location"),
+      proxyPrefix
+    );
     if (location) {
       headers.set("location", location);
     }
@@ -83,6 +91,7 @@ async function proxy(request: Request): Promise<Response> {
 
     const text = await upstream.text();
     const rewritten = rewriteDashboardBody(text, {
+      proxyPrefix,
       requestHost: url.host,
       dashboardPort: String(dashboardPort),
     });

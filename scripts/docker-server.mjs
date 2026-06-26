@@ -1,19 +1,23 @@
 /**
- * Docker entrypoint: proxies WebSocket upgrades for /api/dashboard to k6 :5665
+ * Docker entrypoint: proxies WebSocket upgrades for /api/dashboard to k6
  * while delegating all HTTP traffic to the Next.js standalone server on an internal port.
  */
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import httpProxy from "http-proxy";
+import dashboardRouting from "./docker-dashboard-routing.cjs";
+
+const {
+  DASHBOARD_PREFIX,
+  getScopedRunId,
+  resolveDashboardTarget,
+  stripDashboardPrefix,
+} = dashboardRouting;
 
 const PUBLIC_PORT = Number(process.env.PORT ?? 3000);
 const INTERNAL_PORT = PUBLIC_PORT + 1;
-const DASHBOARD_TARGET =
-  process.env.K6_DASHBOARD_ORIGIN ?? "http://127.0.0.1:5665";
-const DASHBOARD_PREFIX = "/api/dashboard";
 
 const dashboardProxy = httpProxy.createProxyServer({
-  target: DASHBOARD_TARGET,
   ws: true,
   changeOrigin: true,
 });
@@ -44,12 +48,6 @@ nextProcess.on("exit", (code) => {
   process.exit(code ?? 1);
 });
 
-function stripDashboardPrefix(url) {
-  if (!url.startsWith(DASHBOARD_PREFIX)) return url;
-  const stripped = url.slice(DASHBOARD_PREFIX.length);
-  return stripped.length > 0 ? stripped : "/";
-}
-
 function waitForNext() {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + 30_000;
@@ -74,15 +72,51 @@ const server = createServer((req, res) => {
   nextProxy.web(req, res);
 });
 
+async function getActiveRunsForDashboardUrl(url) {
+  if (!getScopedRunId(url)) return undefined;
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${INTERNAL_PORT}/api/run/status`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) return [];
+    const status = await response.json();
+    return Array.isArray(status.runs) ? status.runs : [];
+  } catch {
+    return [];
+  }
+}
+
+function rejectDashboardUpgrade(socket) {
+  socket.write(
+    "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+  );
+  socket.destroy();
+}
+
 server.on("upgrade", (req, socket, head) => {
+  void handleUpgrade(req, socket, head);
+});
+
+async function handleUpgrade(req, socket, head) {
   const url = req.url ?? "";
   if (url.startsWith(DASHBOARD_PREFIX)) {
+    const activeRuns = await getActiveRunsForDashboardUrl(url);
+    const target = resolveDashboardTarget(url, activeRuns);
+    if (!target) {
+      rejectDashboardUpgrade(socket);
+      return;
+    }
+
     req.url = stripDashboardPrefix(url);
-    dashboardProxy.ws(req, socket, head);
+    dashboardProxy.ws(req, socket, head, {
+      target,
+    });
     return;
   }
   nextProxy.ws(req, socket, head);
-});
+}
 
 server.listen(PUBLIC_PORT, "0.0.0.0", () => {
   console.log(

@@ -55,6 +55,60 @@ describe("dashboard proxy route", () => {
     );
   });
 
+  it("keeps rewritten dashboard websocket URLs scoped to the requested run id", async () => {
+    mockGetRunById.mockReturnValue({
+      id: "run_1",
+      dashboardPort: 5667,
+    });
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response('const ws = new WebSocket("ws://127.0.0.1:5667/ws");', {
+        status: 200,
+        headers: { "content-type": "application/javascript" },
+      })
+    ) as jest.Mock;
+
+    const response = await GET(
+      new Request("http://localhost/api/dashboard/run/run_1/ui/app.js")
+    );
+
+    await expect(response.text()).resolves.toContain(
+      'ws://localhost/api/dashboard/run/run_1/ws'
+    );
+  });
+
+  it("keeps dashboard redirects scoped to the requested run id", async () => {
+    mockGetRunById.mockReturnValue({
+      id: "run_1",
+      dashboardPort: 5667,
+    });
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(null, {
+        status: 308,
+        headers: { location: "/ui/" },
+      })
+    ) as jest.Mock;
+
+    const response = await GET(
+      new Request("http://localhost/api/dashboard/run/run_1/ui")
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "/api/dashboard/run/run_1/ui/"
+    );
+  });
+
+  it("returns 404 instead of falling back when a requested run id is stale", async () => {
+    mockGetRunById.mockReturnValue(null);
+
+    const response = await GET(
+      new Request("http://localhost/api/dashboard/run/stale-run/ui/")
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("k6 dashboard run not found");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("falls back to the oldest active run when run id is missing", async () => {
     mockGetStatus.mockReturnValue({
       runs: [

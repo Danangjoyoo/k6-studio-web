@@ -107,6 +107,34 @@ describe("AppHeader", () => {
     expect(screen.getByText("default/smoke.ts")).toBeInTheDocument();
   });
 
+  it("makes the active runner label visibly interactive on hover", () => {
+    render(
+      <AppHeader
+        namespace="team-a"
+        onNamespaceChange={jest.fn()}
+        activeRunners={1}
+        runnerCapacity={2}
+        activeRuns={[
+          {
+            id: "run_1",
+            namespace: "team-a",
+            script: "load.ts",
+            startedAt: 1,
+            runnerIndex: 0,
+            dashboardPort: 5665,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("active-runner-status")).toHaveClass(
+      "cursor-pointer",
+      "hover:border-run/70",
+      "hover:bg-run/15",
+      "hover:text-run"
+    );
+  });
+
   it("places the namespace selector beside the app identity before runner status", () => {
     render(
       <AppHeader

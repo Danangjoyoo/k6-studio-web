@@ -81,7 +81,7 @@ export default function AppHeader({
           type="button"
           data-testid="active-runner-status"
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wider transition-colors duration-200",
+            "flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wider transition-colors duration-200 hover:border-run/70 hover:bg-run/15 hover:text-run focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-run/40",
             isRunning
               ? "border-run/30 bg-run/10 text-run"
               : "border-border bg-panel-raised text-muted-foreground"

@@ -30,16 +30,18 @@ let runs: ActiveRun[] = [];
 let runSequence = 0;
 const cancelHandlers = new Map<string, () => void>();
 
+export const DASHBOARD_BASE_PORT = 5665;
+export const MAX_RUNNERS = 20;
+export const DASHBOARD_LAST_PORT = DASHBOARD_BASE_PORT + MAX_RUNNERS - 1;
+
 export function getRunnerCapacity(): number {
   const parsed = Number.parseInt(process.env.TOTAL_RUNNERS ?? "1", 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
-  return parsed;
+  return Math.min(parsed, MAX_RUNNERS);
 }
 
 export function getDashboardBasePort(): number {
-  const parsed = Number.parseInt(process.env.K6_DASHBOARD_PORT ?? "5665", 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return 5665;
-  return parsed;
+  return DASHBOARD_BASE_PORT;
 }
 
 /** Attempt to acquire a runner slot for `script`. Returns the run on success. */
@@ -72,7 +74,7 @@ export function tryAcquire(
     script,
     startedAt: Date.now(),
     runnerIndex,
-    dashboardPort: getDashboardBasePort() + runnerIndex,
+    dashboardPort: DASHBOARD_BASE_PORT + runnerIndex,
   };
   runs = [...runs, run].sort((a, b) => a.startedAt - b.startedAt);
   return run;

@@ -68,6 +68,13 @@ describe("k6", () => {
     expect(env.K6_WEB_DASHBOARD_PORT).toBe("5667");
   });
 
+  it("getK6RunEnv ignores K6_DASHBOARD_PORT env override", () => {
+    process.env.K6_DASHBOARD_PORT = "5999";
+    const env = getK6RunEnv("/tmp/report.html");
+    expect(env.K6_WEB_DASHBOARD_PORT).toBe("5665");
+    delete process.env.K6_DASHBOARD_PORT;
+  });
+
   it("getK6RunEnv sets a fast dashboard update period by default", () => {
     const env = getK6RunEnv("/tmp/report.html");
     expect(env.K6_WEB_DASHBOARD_PERIOD).toBe("1s");
