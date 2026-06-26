@@ -9,6 +9,7 @@ const mockGetObject = jest.fn();
 const mockPutObject = jest.fn();
 const mockRunK6 = jest.fn();
 const mockWaitForPortFree = jest.fn();
+const originalTotalRunners = process.env.TOTAL_RUNNERS;
 
 jest.mock("@/lib/minio", () => ({
   ensureBuckets: () => mockEnsureBuckets(),
@@ -52,6 +53,7 @@ async function readSse(response: Response) {
 describe("POST /api/run", () => {
   beforeEach(() => {
     _reset();
+    delete process.env.TOTAL_RUNNERS;
     jest.useRealTimers();
     jest.restoreAllMocks();
     mockEnsureBuckets.mockReset().mockResolvedValue(undefined);
@@ -69,6 +71,11 @@ describe("POST /api/run", () => {
   });
 
   afterEach(() => {
+    if (originalTotalRunners === undefined) {
+      delete process.env.TOTAL_RUNNERS;
+    } else {
+      process.env.TOTAL_RUNNERS = originalTotalRunners;
+    }
     _reset();
   });
 
@@ -175,5 +182,71 @@ describe("POST /api/run", () => {
     expect(response.status).toBe(409);
     finishRun(0);
     await readSse(first);
+  });
+
+  it("allows concurrent runs up to TOTAL_RUNNERS and uses distinct dashboard ports", async () => {
+    process.env.TOTAL_RUNNERS = "2";
+    const finishRun: Array<(exitCode: number) => void> = [];
+    mockRunK6.mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          finishRun.push(resolve);
+        })
+    );
+
+    const first = await POST(
+      new Request("http://localhost/api/run", {
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          filename: "api/a.ts",
+        }),
+      })
+    );
+    const second = await POST(
+      new Request("http://localhost/api/run", {
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          filename: "api/b.ts",
+        }),
+      })
+    );
+    const rejected = await POST(
+      new Request("http://localhost/api/run", {
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          filename: "api/c.ts",
+        }),
+      })
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(mockRunK6.mock.calls[0][4]).toBe(5665);
+    expect(mockRunK6.mock.calls[1][4]).toBe(5666);
+    expect(rejected.status).toBe(409);
+    await expect(rejected.json()).resolves.toMatchObject({
+      status: {
+        activeRunners: 2,
+        capacity: 2,
+        runs: [
+          expect.objectContaining({ script: "api/a.ts", dashboardPort: 5665 }),
+          expect.objectContaining({ script: "api/b.ts", dashboardPort: 5666 }),
+        ],
+      },
+    });
+
+    finishRun[0](0);
+    await readSse(first);
+    expect(getStatus()).toMatchObject({
+      activeRunners: 1,
+      runs: [expect.objectContaining({ script: "api/b.ts" })],
+    });
+
+    finishRun[1](0);
+    await readSse(second);
+    expect(getStatus().activeRunners).toBe(0);
   });
 });

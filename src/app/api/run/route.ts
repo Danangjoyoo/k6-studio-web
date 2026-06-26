@@ -19,8 +19,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const DASHBOARD_PORT = parseInt(process.env.K6_DASHBOARD_PORT ?? "5665", 10);
-
 export async function POST(request: Request) {
   const { filename, namespace: namespaceInput } = (await request.json()) as {
     filename: string;
@@ -43,7 +41,8 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  if (!tryAcquire(filename, namespace)) {
+  const activeRun = tryAcquire(filename, namespace);
+  if (!activeRun) {
     return NextResponse.json(
       { error: "A run is already in progress", status: getStatus() },
       { status: 409 }
@@ -91,7 +90,8 @@ export async function POST(request: Request) {
             scriptPath,
             reportPath,
             (line) => send({ line }),
-            abortController.signal
+            abortController.signal,
+            activeRun.dashboardPort
           );
 
           const reportName = `${filename}-${Date.now()}.html`;
@@ -111,8 +111,8 @@ export async function POST(request: Request) {
         } finally {
           // Wait for the dashboard port to be released before unlocking so the
           // next run never races the kernel socket (bug H2).
-          await waitForPortFree(DASHBOARD_PORT, 5000);
-          release();
+          await waitForPortFree(activeRun.dashboardPort, 5000);
+          release(activeRun.id);
           try {
             controller.close();
           } catch {
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    release();
+    release(activeRun.id);
     throw error;
   }
 }
