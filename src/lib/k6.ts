@@ -3,7 +3,8 @@ import { stat } from "fs/promises";
 import { createConnection } from "net";
 import { DASHBOARD_BASE_PORT } from "@/lib/run-lock";
 
-export const K6_BIN = process.env.K6_BIN ?? "k6";
+export const K6_BIN = "/usr/local/bin/k6";
+const K6_WEB_DASHBOARD_HOST = "0.0.0.0";
 
 export function getK6RunArgs(scriptPath: string): string[] {
   return ["run", scriptPath];
@@ -16,7 +17,7 @@ export function getK6RunEnv(
   const port = String(dashboardPort ?? DASHBOARD_BASE_PORT);
   return {
     K6_WEB_DASHBOARD: "true",
-    K6_WEB_DASHBOARD_HOST: process.env.K6_WEB_DASHBOARD_HOST ?? "0.0.0.0",
+    K6_WEB_DASHBOARD_HOST,
     K6_WEB_DASHBOARD_PORT: port,
     K6_WEB_DASHBOARD_OPEN: "false",
     K6_WEB_DASHBOARD_PERIOD: process.env.K6_WEB_DASHBOARD_PERIOD ?? "1s",

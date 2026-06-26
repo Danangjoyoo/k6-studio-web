@@ -19,6 +19,17 @@ describe("runtime configuration", () => {
     );
   });
 
+  it("does not expose k6 binary or dashboard host as runtime configuration", () => {
+    expect(readProjectFile(".env.example")).not.toContain("K6_BIN");
+    expect(readProjectFile(".env.example")).not.toContain(
+      "K6_WEB_DASHBOARD_HOST"
+    );
+    expect(readProjectFile("docker-compose.yml")).not.toContain("K6_BIN");
+    expect(readProjectFile("docker-compose.yml")).not.toContain(
+      "K6_WEB_DASHBOARD_HOST"
+    );
+  });
+
   it("publishes the fixed dashboard port range for direct access", () => {
     expect(readProjectFile("docker-compose.yml")).toContain(
       '"5665-5684:5665-5684"'

@@ -87,11 +87,27 @@ describe("k6", () => {
     delete process.env.K6_WEB_DASHBOARD_PERIOD;
   });
 
-  it("getK6RunEnv respects K6_WEB_DASHBOARD_HOST env override", () => {
+  it("getK6RunEnv ignores K6_WEB_DASHBOARD_HOST env override", () => {
     process.env.K6_WEB_DASHBOARD_HOST = "127.0.0.1";
     const env = getK6RunEnv("/tmp/report.html");
-    expect(env.K6_WEB_DASHBOARD_HOST).toBe("127.0.0.1");
+    expect(env.K6_WEB_DASHBOARD_HOST).toBe("0.0.0.0");
     delete process.env.K6_WEB_DASHBOARD_HOST;
+  });
+
+  it("K6_BIN ignores K6_BIN env override", () => {
+    const originalK6Bin = process.env.K6_BIN;
+    process.env.K6_BIN = "/tmp/custom-k6";
+
+    jest.isolateModules(() => {
+      const isolated = jest.requireActual<typeof import("@/lib/k6")>("@/lib/k6");
+      expect(isolated.K6_BIN).toBe("/usr/local/bin/k6");
+    });
+
+    if (originalK6Bin === undefined) {
+      delete process.env.K6_BIN;
+    } else {
+      process.env.K6_BIN = originalK6Bin;
+    }
   });
 
   describe("isK6SummaryLine", () => {
