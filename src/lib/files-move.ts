@@ -2,6 +2,8 @@ import { KEEP_SUFFIX } from "@/lib/files-tree";
 import { REPORTS_BUCKET, SCRIPTS_BUCKET } from "@/lib/minio";
 import { toNamespacedKey } from "@/lib/namespaces";
 
+const REPORT_HISTORY_SUFFIX_PATTERN = /^-\d+\.html(?:\.tabs\.json)?$/;
+
 export interface MoveItem {
   path: string;
   type: "file" | "folder";
@@ -380,7 +382,7 @@ function buildReportMoves(
       const reportSuffix = reportKey.slice(scriptMove.from.length);
       if (
         !reportKey.startsWith(scriptMove.from) ||
-        !/^-\d+\.html$/.test(reportSuffix)
+        !REPORT_HISTORY_SUFFIX_PATTERN.test(reportSuffix)
       ) {
         continue;
       }

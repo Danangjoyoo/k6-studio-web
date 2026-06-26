@@ -68,6 +68,11 @@ describe("GET /api/reports", () => {
         { name: "team-a/.namespace", size: 0, lastModified },
         { name: "team-a/.keep", size: 0, lastModified },
         { name: "team-a/api/smoke.ts-111.html", size: 42, lastModified },
+        {
+          name: "team-a/api/smoke.ts-111.html.tabs.json",
+          size: 120,
+          lastModified,
+        },
       ])
     );
 

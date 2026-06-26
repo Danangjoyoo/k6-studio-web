@@ -6,6 +6,7 @@ import {
   NamespaceError,
   stripNamespacePrefix,
 } from "@/lib/namespaces";
+import { isReportTabsSidecar } from "@/lib/report-tabs";
 
 export async function GET(request: Request) {
   let namespace: string;
@@ -31,6 +32,7 @@ export async function GET(request: Request) {
       if (obj.name) {
         const relative = stripNamespacePrefix(namespace, obj.name);
         if (!relative || relative === ".keep" || relative === ".namespace") return;
+        if (isReportTabsSidecar(relative)) return;
         reports.push({
           name: relative,
           size: obj.size ?? 0,
