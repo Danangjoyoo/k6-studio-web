@@ -1,6 +1,7 @@
 import { writeFile } from "fs/promises";
 import { Readable } from "stream";
 import { POST } from "@/app/api/run/route";
+import { POST as CANCEL_POST } from "@/app/api/run/cancel/route";
 import { getStatus, _reset } from "@/lib/run-lock";
 import { REPORTS_BUCKET, SCRIPTS_BUCKET } from "@/lib/minio";
 
@@ -248,5 +249,58 @@ describe("POST /api/run", () => {
     finishRun[1](0);
     await readSse(second);
     expect(getStatus().activeRunners).toBe(0);
+  });
+
+  it("skips report upload and history metadata when the run is cancelled", async () => {
+    let capturedSignal!: AbortSignal;
+    mockRunK6.mockImplementation(
+      (
+        _scriptPath: string,
+        _reportPath: string,
+        onLine: (line: string) => void,
+        signal: AbortSignal
+      ) =>
+        new Promise<number>((resolve) => {
+          capturedSignal = signal;
+          onLine("running");
+          signal.addEventListener(
+            "abort",
+            () => {
+              onLine("[cancelled] run cancelled by user");
+              resolve(130);
+            },
+            { once: true }
+          );
+        })
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/run", {
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          filename: "api/smoke.ts",
+        }),
+      })
+    );
+    const runId = getStatus().runs[0]?.id;
+    if (!runId) throw new Error("missing active run");
+
+    const cancelResponse = await CANCEL_POST(
+      new Request("http://localhost/api/run/cancel", {
+        method: "POST",
+        body: JSON.stringify({ runId }),
+      })
+    );
+    const text = await readSse(response);
+
+    await expect(cancelResponse.json()).resolves.toEqual({ cancelled: true });
+    expect(capturedSignal.aborted).toBe(true);
+    expect(mockPutObject).not.toHaveBeenCalled();
+    expect(text).toContain('"line":"[cancelled] run cancelled by user"');
+    expect(text).toContain(
+      'data: {"done":true,"cancelled":true,"exitCode":null,"reportName":null}'
+    );
+    expect(getStatus().running).toBe(false);
   });
 });

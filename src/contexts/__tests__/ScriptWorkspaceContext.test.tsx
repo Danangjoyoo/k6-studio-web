@@ -201,4 +201,115 @@ describe("ScriptWorkspaceContext", () => {
 
     expect(result.current.getSession("a.js").lines).toEqual([]);
   });
+
+  it("posts a run cancellation request and records a cancellation line", async () => {
+    global.fetch = jest.fn((url: string) => {
+      if (url === "/api/run/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: true,
+            namespace: "team-a",
+            script: "a.js",
+            activeRunners: 1,
+            capacity: 1,
+            runs: [
+              {
+                id: "run_1",
+                namespace: "team-a",
+                script: "a.js",
+                startedAt: 1,
+                runnerIndex: 0,
+                dashboardPort: 5665,
+              },
+            ],
+            startedAt: 1,
+          }),
+        });
+      }
+      if (url === "/api/run/cancel") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ cancelled: true }),
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => wrapper({ children, namespace: "team-a" }),
+    });
+
+    await waitFor(() => {
+      expect(result.current.globalRuns).toEqual([
+        expect.objectContaining({ id: "run_1", script: "a.js" }),
+      ]);
+    });
+
+    await act(async () => {
+      await result.current.cancelRun("run_1");
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/run/cancel",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ runId: "run_1" }),
+      })
+    );
+    expect(result.current.getSession("a.js").lines).toContain(
+      "[cancelled] cancellation requested; this run will not be saved to history"
+    );
+  });
+
+  it("records an error line when cancellation fails", async () => {
+    global.fetch = jest.fn((url: string) => {
+      if (url === "/api/run/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: true,
+            namespace: "team-a",
+            script: "a.js",
+            activeRunners: 1,
+            capacity: 1,
+            runs: [
+              {
+                id: "run_1",
+                namespace: "team-a",
+                script: "a.js",
+                startedAt: 1,
+                runnerIndex: 0,
+                dashboardPort: 5665,
+              },
+            ],
+            startedAt: 1,
+          }),
+        });
+      }
+      if (url === "/api/run/cancel") {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ error: "run not found" }),
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => wrapper({ children, namespace: "team-a" }),
+    });
+
+    await waitFor(() => {
+      expect(result.current.globalRuns).toHaveLength(1);
+    });
+
+    await act(async () => {
+      await result.current.cancelRun("run_1");
+    });
+
+    expect(result.current.getSession("a.js").lines).toContain(
+      "[error] could not cancel run"
+    );
+  });
 });

@@ -33,6 +33,7 @@ interface ScriptWorkspaceValue {
   setSelectedFile: (name: string) => void;
   getSession: (filename: string) => ScriptSession;
   runScript: (filename: string) => Promise<void>;
+  cancelRun: (runId: string) => Promise<void>;
   runningScript: string | null;
   runEpoch: number;
   // Global (server-authoritative) run state
@@ -226,6 +227,44 @@ export function ScriptWorkspaceProvider({
     }
   }, [namespace]);
 
+  const cancelRun = useCallback(
+    async (runId: string) => {
+      const activeRun = globalRuns.find((run) => run.id === runId);
+      if (!activeRun) return;
+
+      const key = sessionKey(activeRun.namespace, activeRun.script);
+      try {
+        const response = await fetch("/api/run/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId }),
+        });
+
+        if (!response.ok) {
+          throw new Error("cancel failed");
+        }
+
+        setSessions((s) => {
+          const current = s[key] ?? EMPTY_SESSION;
+          return updateSession(s, key, {
+            lines: [
+              ...current.lines,
+              "[cancelled] cancellation requested; this run will not be saved to history",
+            ],
+          });
+        });
+      } catch {
+        setSessions((s) => {
+          const current = s[key] ?? EMPTY_SESSION;
+          return updateSession(s, key, {
+            lines: [...current.lines, "[error] could not cancel run"],
+          });
+        });
+      }
+    },
+    [globalRuns]
+  );
+
   const value = useMemo(
     () => ({
       namespace,
@@ -233,6 +272,7 @@ export function ScriptWorkspaceProvider({
       setSelectedFile: onSelectFile,
       getSession,
       runScript,
+      cancelRun,
       runningScript,
       runEpoch,
       globalRunning,
@@ -248,6 +288,7 @@ export function ScriptWorkspaceProvider({
       onSelectFile,
       getSession,
       runScript,
+      cancelRun,
       runningScript,
       runEpoch,
       globalRunning,

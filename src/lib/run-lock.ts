@@ -28,6 +28,7 @@ export interface RunStatus {
 
 let runs: ActiveRun[] = [];
 let runSequence = 0;
+const cancelHandlers = new Map<string, () => void>();
 
 export function getRunnerCapacity(): number {
   const parsed = Number.parseInt(process.env.TOTAL_RUNNERS ?? "1", 10);
@@ -84,13 +85,31 @@ export function tryAcquire(
 export function release(runId?: string): void {
   if (!runId) {
     runs = [];
+    cancelHandlers.clear();
     return;
   }
   runs = runs.filter((run) => run.id !== runId);
+  cancelHandlers.delete(runId);
 }
 
 export function getRunById(runId: string): ActiveRun | null {
   return runs.find((run) => run.id === runId) ?? null;
+}
+
+export function registerCancelHandler(
+  runId: string,
+  handler: () => void
+): boolean {
+  if (!getRunById(runId)) return false;
+  cancelHandlers.set(runId, handler);
+  return true;
+}
+
+export function cancelRun(runId: string): boolean {
+  const handler = cancelHandlers.get(runId);
+  if (!handler) return false;
+  handler();
+  return true;
 }
 
 /** Current runner status, safe to expose over HTTP. */
@@ -112,4 +131,5 @@ export function getStatus(): RunStatus {
 export function _reset(): void {
   runs = [];
   runSequence = 0;
+  cancelHandlers.clear();
 }

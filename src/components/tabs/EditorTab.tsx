@@ -2,8 +2,16 @@
 
 import dynamic from "next/dynamic";
 import { useRef, useState } from "react";
-import { Code2, Play, Save } from "lucide-react";
+import { Code2, OctagonX, Play, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -34,10 +42,12 @@ export default function EditorTab({ filename }: EditorTabProps) {
   const [saveStatus, setSaveStatus] = useState<
     "saved" | "saving" | "unsaved"
   >("saved");
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const {
     namespace,
     getSession,
     runScript,
+    cancelRun,
     activeRunners,
     globalRuns,
     runnerCapacity,
@@ -54,15 +64,22 @@ export default function EditorTab({ filename }: EditorTabProps) {
   }
 
   const session = getSession(filename);
-  const selectedScriptRunning = globalRuns.some(
+  const selectedActiveRun = globalRuns.find(
     (run) => run.namespace === namespace && run.script === filename
   );
+  const selectedScriptRunning = selectedActiveRun !== undefined;
   const runnersFull = activeRunners >= runnerCapacity && !selectedScriptRunning;
 
   async function handleRun() {
     if (!filename) return;
     await editorRef.current?.save();
     await runScript(filename);
+  }
+
+  function handleConfirmCancel() {
+    if (!selectedActiveRun) return;
+    setCancelConfirmOpen(false);
+    void cancelRun(selectedActiveRun.id);
   }
 
   const statusVariant =
@@ -98,7 +115,37 @@ export default function EditorTab({ filename }: EditorTabProps) {
           <Play className="h-3 w-3" />
           {session.isRunning || selectedScriptRunning ? "Running…" : "Run test"}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 border-destructive/40 px-2 text-xs text-destructive hover:border-destructive/70 hover:bg-destructive/10 hover:text-destructive disabled:border-border disabled:text-muted-foreground"
+          disabled={!selectedActiveRun}
+          onClick={() => setCancelConfirmOpen(true)}
+        >
+          <OctagonX className="h-3 w-3" />
+          Cancel run
+        </Button>
       </div>
+
+      <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <DialogContent className="border-border bg-panel-raised">
+          <DialogHeader>
+            <DialogTitle>Cancel running test?</DialogTitle>
+            <DialogDescription>
+              This stops the active k6 process for {filename}. Cancelled runs are
+              not saved to test history.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelConfirmOpen(false)}>
+              Keep running
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmCancel}>
+              Confirm cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ResizablePanelGroup
         direction="vertical"

@@ -1,8 +1,10 @@
 import {
   _reset,
+  cancelRun,
   getRunById,
   getRunnerCapacity,
   getStatus,
+  registerCancelHandler,
   release,
   tryAcquire,
 } from "@/lib/run-lock";
@@ -154,5 +156,28 @@ describe("run-lock", () => {
     tryAcquire("b.ts");
     release();
     expect(getStatus().runs).toEqual([]);
+  });
+
+  it("calls a registered cancellation handler for an active run", () => {
+    const run = tryAcquire("a.ts");
+    const cancel = jest.fn();
+    if (!run) throw new Error("run not acquired");
+
+    registerCancelHandler(run.id, cancel);
+
+    expect(cancelRun(run.id)).toBe(true);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears cancellation handlers when a run is released", () => {
+    const run = tryAcquire("a.ts");
+    const cancel = jest.fn();
+    if (!run) throw new Error("run not acquired");
+
+    registerCancelHandler(run.id, cancel);
+    release(run.id);
+
+    expect(cancelRun(run.id)).toBe(false);
+    expect(cancel).not.toHaveBeenCalled();
   });
 });

@@ -10,7 +10,12 @@ import {
   ensureBuckets,
 } from "@/lib/minio";
 import { runK6, waitForPortFree } from "@/lib/k6";
-import { tryAcquire, release, getStatus } from "@/lib/run-lock";
+import {
+  tryAcquire,
+  release,
+  getStatus,
+  registerCancelHandler,
+} from "@/lib/run-lock";
 import {
   NamespaceError,
   normalizeNamespace,
@@ -71,6 +76,11 @@ export async function POST(request: Request) {
 
     const encoder = new TextEncoder();
     const abortController = new AbortController();
+    let cancelled = false;
+    registerCancelHandler(activeRun.id, () => {
+      cancelled = true;
+      abortController.abort();
+    });
     request.signal.addEventListener("abort", () => abortController.abort());
 
     const readable = new ReadableStream({
@@ -93,6 +103,16 @@ export async function POST(request: Request) {
             abortController.signal,
             activeRun.dashboardPort
           );
+
+          if (cancelled) {
+            send({
+              done: true,
+              cancelled: true,
+              exitCode: null,
+              reportName: null,
+            });
+            return;
+          }
 
           const reportName = `${filename}-${Date.now()}.html`;
           const reportKey = toNamespacedKey(namespace, reportName);

@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import EditorTab from "@/components/tabs/EditorTab";
 import ScriptEditor from "@/components/editor/ScriptEditor";
 
@@ -15,6 +15,7 @@ const mockWorkspace = {
     lastReportName: null,
   }),
   runScript: jest.fn(),
+  cancelRun: jest.fn(),
   runningScript: null,
   globalRunning: false,
   globalRunningNamespace: null as string | null,
@@ -73,6 +74,8 @@ describe("EditorTab", () => {
     mockWorkspace.globalRuns = [];
     mockWorkspace.activeRunners = 0;
     mockWorkspace.runnerCapacity = 1;
+    mockWorkspace.runScript.mockReset();
+    mockWorkspace.cancelRun.mockReset();
   });
 
   it("renders placeholder when no file is selected", () => {
@@ -164,5 +167,54 @@ describe("EditorTab", () => {
     render(<EditorTab filename="script.js" />);
 
     expect(screen.getByRole("button", { name: /run test/i })).toBeDisabled();
+  });
+
+  it("disables cancelling when the selected script is idle", () => {
+    render(<EditorTab filename="script.js" />);
+
+    expect(screen.getByRole("button", { name: /cancel run/i })).toBeDisabled();
+  });
+
+  it("enables cancelling when the selected script is active", () => {
+    mockWorkspace.activeRunners = 1;
+    mockWorkspace.globalRuns = [
+      {
+        id: "run_1",
+        namespace: "team-a",
+        script: "script.js",
+        startedAt: 1,
+        runnerIndex: 0,
+        dashboardPort: 5665,
+      },
+    ];
+
+    render(<EditorTab filename="script.js" />);
+
+    expect(screen.getByRole("button", { name: /cancel run/i })).toBeEnabled();
+  });
+
+  it("confirms before cancelling the active selected script", () => {
+    mockWorkspace.activeRunners = 1;
+    mockWorkspace.globalRuns = [
+      {
+        id: "run_1",
+        namespace: "team-a",
+        script: "script.js",
+        startedAt: 1,
+        runnerIndex: 0,
+        dashboardPort: 5665,
+      },
+    ];
+
+    render(<EditorTab filename="script.js" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel run/i }));
+    expect(
+      screen.getByRole("heading", { name: "Cancel running test?" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm cancel" }));
+
+    expect(mockWorkspace.cancelRun).toHaveBeenCalledWith("run_1");
   });
 });
