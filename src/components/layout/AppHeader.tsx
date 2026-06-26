@@ -47,24 +47,30 @@ export default function AppHeader({
 
   return (
     <header className="load-lab-grid flex h-11 shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
-      <div className="flex items-center gap-2">
-        <K6Logo className="h-7 w-7" />
-        <div className="leading-tight">
-          <p className="text-sm font-semibold tracking-tight text-foreground">
-            k6 Studio
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-            Load lab
-          </p>
+      <div
+        data-testid="app-header-left"
+        className="flex min-w-0 items-center gap-3"
+      >
+        <div className="flex shrink-0 items-center gap-2">
+          <K6Logo className="h-7 w-7" />
+          <div className="leading-tight">
+            <p className="text-sm font-semibold tracking-tight text-foreground">
+              k6 Studio
+            </p>
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              Load lab
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="ml-auto flex items-center gap-3">
+        <div className="h-6 w-px bg-border" aria-hidden />
         <NamespaceSelector
           namespace={namespace}
           onNamespaceChange={onNamespaceChange}
         />
+      </div>
 
+      <div className="ml-auto flex min-w-0 items-center gap-3">
         {/* Active runner counter — always visible so users understand capacity */}
         <div
           data-testid="active-runner-status"

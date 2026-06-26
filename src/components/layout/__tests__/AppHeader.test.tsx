@@ -72,4 +72,31 @@ describe("AppHeader", () => {
     expect(scriptBadge).toHaveAttribute("title", runningScript);
     expect(scriptBadge.className).toContain("max-w-[min(52vw,720px)]");
   });
+
+  it("places the namespace selector beside the app identity before runner status", () => {
+    render(
+      <AppHeader
+        namespace="team-a"
+        onNamespaceChange={jest.fn()}
+        activeRunners={0}
+        runningScript={null}
+      />
+    );
+
+    const header = screen.getByRole("banner");
+    const namespaceControl = screen.getByRole("button", {
+      name: "namespace:team-a",
+    });
+    const runnerStatus = screen.getByTestId("active-runner-status");
+    const nodes = Array.from(header.querySelectorAll("*"));
+
+    expect(nodes.indexOf(namespaceControl)).toBeGreaterThan(-1);
+    expect(nodes.indexOf(runnerStatus)).toBeGreaterThan(-1);
+    expect(nodes.indexOf(namespaceControl)).toBeLessThan(
+      nodes.indexOf(runnerStatus)
+    );
+    expect(
+      namespaceControl.closest("[data-testid='app-header-left']")
+    ).not.toBeNull();
+  });
 });
