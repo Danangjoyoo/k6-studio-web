@@ -63,6 +63,11 @@ describe("k6", () => {
     expect(env.K6_WEB_DASHBOARD_EXPORT).toBe("/tmp/report.html");
   });
 
+  it("getK6RunEnv accepts an explicit dashboard port", () => {
+    const env = getK6RunEnv("/tmp/report.html", 5667);
+    expect(env.K6_WEB_DASHBOARD_PORT).toBe("5667");
+  });
+
   it("getK6RunEnv sets a fast dashboard update period by default", () => {
     const env = getK6RunEnv("/tmp/report.html");
     expect(env.K6_WEB_DASHBOARD_PERIOD).toBe("1s");
@@ -120,6 +125,25 @@ describe("k6", () => {
 
   describe("runK6 process lifecycle", () => {
     beforeEach(() => spawnMock.mockReset());
+
+    it("passes an explicit dashboard port to the spawned k6 environment", async () => {
+      const child = makeFakeChild();
+      spawnMock.mockReturnValue(child);
+
+      const promise = runK6("/tmp/s.js", "/tmp/r.html", () => {}, undefined, 5668);
+      child.emit("close", 0);
+      await expect(promise).resolves.toBe(0);
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        expect.any(String),
+        ["run", "/tmp/s.js"],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            K6_WEB_DASHBOARD_PORT: "5668",
+          }),
+        })
+      );
+    });
 
     it("kills the child process when the abort signal fires", async () => {
       const child = makeFakeChild();

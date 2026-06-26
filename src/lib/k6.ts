@@ -8,8 +8,11 @@ export function getK6RunArgs(scriptPath: string): string[] {
   return ["run", scriptPath];
 }
 
-export function getK6RunEnv(reportPath: string): Record<string, string> {
-  const port = process.env.K6_DASHBOARD_PORT ?? "5665";
+export function getK6RunEnv(
+  reportPath: string,
+  dashboardPort?: number
+): Record<string, string> {
+  const port = String(dashboardPort ?? process.env.K6_DASHBOARD_PORT ?? "5665");
   return {
     K6_WEB_DASHBOARD: "true",
     K6_WEB_DASHBOARD_HOST: process.env.K6_WEB_DASHBOARD_HOST ?? "0.0.0.0",
@@ -72,13 +75,14 @@ export function runK6(
   scriptPath: string,
   reportPath: string,
   onLine: (line: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  dashboardPort?: number
 ): Promise<number> {
   return new Promise((resolve) => {
     const args = getK6RunArgs(scriptPath);
     const child: ChildProcess = spawn(K6_BIN, args, {
       stdio: "pipe",
-      env: { ...process.env, ...getK6RunEnv(reportPath) },
+      env: { ...process.env, ...getK6RunEnv(reportPath, dashboardPort) },
     });
     let settled = false;
     // Grace timer: started when k6 reaches its summary or finishes exporting
