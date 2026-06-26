@@ -118,7 +118,17 @@ describe("ScriptWorkspaceContext", () => {
         namespace: "team-b",
         script: "a.js",
         activeRunners: 1,
-        capacity: 1,
+        capacity: 2,
+        runs: [
+          {
+            id: "run_1",
+            namespace: "team-b",
+            script: "a.js",
+            startedAt: 1,
+            runnerIndex: 0,
+            dashboardPort: 5665,
+          },
+        ],
         startedAt: 1,
       }),
     }) as jest.Mock;
@@ -129,6 +139,15 @@ describe("ScriptWorkspaceContext", () => {
 
     await waitFor(() => {
       expect(result.current.globalRunningNamespace).toBe("team-b");
+      expect(result.current.runnerCapacity).toBe(2);
+      expect(result.current.globalRuns).toEqual([
+        expect.objectContaining({
+          id: "run_1",
+          namespace: "team-b",
+          script: "a.js",
+          dashboardPort: 5665,
+        }),
+      ]);
     });
   });
 

@@ -19,6 +19,16 @@ const mockWorkspace = {
   globalRunning: false,
   globalRunningNamespace: null as string | null,
   globalRunningScript: null as string | null,
+  globalRuns: [] as Array<{
+    id: string;
+    namespace: string;
+    script: string;
+    startedAt: number;
+    runnerIndex: number;
+    dashboardPort: number;
+  }>,
+  activeRunners: 0,
+  runnerCapacity: 1,
 };
 
 jest.mock("react-resizable-panels", () => ({
@@ -60,6 +70,9 @@ describe("EditorTab", () => {
     mockWorkspace.globalRunning = false;
     mockWorkspace.globalRunningNamespace = null;
     mockWorkspace.globalRunningScript = null;
+    mockWorkspace.globalRuns = [];
+    mockWorkspace.activeRunners = 0;
+    mockWorkspace.runnerCapacity = 1;
   });
 
   it("renders placeholder when no file is selected", () => {
@@ -85,20 +98,68 @@ describe("EditorTab", () => {
     expect(screen.getByTestId("resize-handle")).toBeInTheDocument();
   });
 
-  it("does not block running the active script in the same namespace", () => {
+  it("blocks running the selected script when it is already active", () => {
     mockWorkspace.globalRunning = true;
-    mockWorkspace.globalRunningNamespace = "team-a";
-    mockWorkspace.globalRunningScript = "script.js";
+    mockWorkspace.activeRunners = 1;
+    mockWorkspace.runnerCapacity = 2;
+    mockWorkspace.globalRuns = [
+      {
+        id: "run_1",
+        namespace: "team-a",
+        script: "script.js",
+        startedAt: 1,
+        runnerIndex: 0,
+        dashboardPort: 5665,
+      },
+    ];
+
+    render(<EditorTab filename="script.js" />);
+
+    expect(screen.getByRole("button", { name: /running/i })).toBeDisabled();
+  });
+
+  it("allows running another script when capacity remains", () => {
+    mockWorkspace.globalRunning = true;
+    mockWorkspace.activeRunners = 1;
+    mockWorkspace.runnerCapacity = 2;
+    mockWorkspace.globalRuns = [
+      {
+        id: "run_1",
+        namespace: "team-b",
+        script: "script.js",
+        startedAt: 1,
+        runnerIndex: 0,
+        dashboardPort: 5665,
+      },
+    ];
 
     render(<EditorTab filename="script.js" />);
 
     expect(screen.getByRole("button", { name: /run test/i })).toBeEnabled();
   });
 
-  it("blocks running when the active global run is in another namespace", () => {
+  it("blocks running another script when runner capacity is full", () => {
     mockWorkspace.globalRunning = true;
-    mockWorkspace.globalRunningNamespace = "team-b";
-    mockWorkspace.globalRunningScript = "script.js";
+    mockWorkspace.activeRunners = 2;
+    mockWorkspace.runnerCapacity = 2;
+    mockWorkspace.globalRuns = [
+      {
+        id: "run_1",
+        namespace: "team-b",
+        script: "script.js",
+        startedAt: 1,
+        runnerIndex: 0,
+        dashboardPort: 5665,
+      },
+      {
+        id: "run_2",
+        namespace: "team-a",
+        script: "other.js",
+        startedAt: 2,
+        runnerIndex: 1,
+        dashboardPort: 5666,
+      },
+    ];
 
     render(<EditorTab filename="script.js" />);
 

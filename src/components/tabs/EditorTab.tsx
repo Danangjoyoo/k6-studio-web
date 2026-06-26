@@ -38,9 +38,9 @@ export default function EditorTab({ filename }: EditorTabProps) {
     namespace,
     getSession,
     runScript,
-    globalRunning,
-    globalRunningNamespace,
-    globalRunningScript,
+    activeRunners,
+    globalRuns,
+    runnerCapacity,
   } = useScriptWorkspace();
 
   if (!filename) {
@@ -54,10 +54,10 @@ export default function EditorTab({ filename }: EditorTabProps) {
   }
 
   const session = getSession(filename);
-  // Blocked when any other script (local session OR server-authoritative) is running
-  const anotherScriptRunning =
-    globalRunning &&
-    (globalRunningNamespace !== namespace || globalRunningScript !== filename);
+  const selectedScriptRunning = globalRuns.some(
+    (run) => run.namespace === namespace && run.script === filename
+  );
+  const runnersFull = activeRunners >= runnerCapacity && !selectedScriptRunning;
 
   async function handleRun() {
     if (!filename) return;
@@ -92,11 +92,11 @@ export default function EditorTab({ filename }: EditorTabProps) {
         <Button
           size="sm"
           className="h-7 gap-1 bg-run px-2 text-xs text-void shadow-none hover:bg-run/90 hover:shadow-[0_0_12px_rgba(245,165,36,0.25)] active:scale-[0.98] disabled:opacity-50"
-          disabled={session.isRunning || anotherScriptRunning}
+          disabled={session.isRunning || selectedScriptRunning || runnersFull}
           onClick={() => void handleRun()}
         >
           <Play className="h-3 w-3" />
-          {session.isRunning ? "Running…" : "Run test"}
+          {session.isRunning || selectedScriptRunning ? "Running…" : "Run test"}
         </Button>
       </div>
 

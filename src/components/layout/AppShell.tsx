@@ -42,29 +42,29 @@ function WorkspaceContent({
   const {
     namespace,
     runEpoch,
-    globalRunning,
-    globalRunningNamespace,
-    globalRunningScript,
+    activeRunners,
+    globalRuns,
+    runnerCapacity,
   } = useScriptWorkspace();
-  const runningScriptForNamespace =
-    globalRunningNamespace === namespace ? globalRunningScript : null;
-  const activeDashboard =
-    globalRunning &&
-    globalRunningNamespace === namespace &&
-    globalRunningScript === selectedFile &&
-    selectedFile !== null;
-  const runningScriptLabel =
-    globalRunning && globalRunningNamespace && globalRunningScript
-      ? `${globalRunningNamespace}/${globalRunningScript}`
-      : null;
+  const activeRuns = globalRuns ?? [];
+  const runningScriptsForNamespace = activeRuns
+    .filter((run) => run.namespace === namespace)
+    .map((run) => run.script);
+  const selectedActiveRun =
+    selectedFile === null
+      ? null
+      : activeRuns.find(
+          (run) => run.namespace === namespace && run.script === selectedFile
+        ) ?? null;
 
   return (
     <>
       <AppHeader
         namespace={namespace}
         onNamespaceChange={onSelectNamespace}
-        activeRunners={globalRunning ? 1 : 0}
-        runningScript={runningScriptLabel}
+        activeRunners={activeRunners}
+        runnerCapacity={runnerCapacity}
+        activeRuns={activeRuns}
       />
 
       <ResizablePanelGroup
@@ -84,7 +84,7 @@ function WorkspaceContent({
             onSelectFile={onSelectFile}
             onFileDeleted={onFileDeleted}
             onFileRenamed={onFileRenamed}
-            globalRunningScript={runningScriptForNamespace}
+            globalRunningScript={runningScriptsForNamespace[0] ?? null}
           />
         </ResizablePanel>
 
@@ -146,8 +146,9 @@ function WorkspaceContent({
               >
                 <LiveDashboardTab
                   scriptName={selectedFile}
-                  isActiveRun={activeDashboard}
+                  isActiveRun={selectedActiveRun !== null}
                   runEpoch={runEpoch}
+                  runId={selectedActiveRun?.id ?? null}
                 />
               </TabsContent>
 

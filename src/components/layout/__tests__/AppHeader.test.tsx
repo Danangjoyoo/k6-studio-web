@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import AppHeader from "@/components/layout/AppHeader";
 
 jest.mock("@/components/layout/NamespaceSelector", () => ({
@@ -27,7 +27,8 @@ describe("AppHeader", () => {
         namespace="default"
         onNamespaceChange={jest.fn()}
         activeRunners={0}
-        runningScript={null}
+        runnerCapacity={1}
+        activeRuns={[]}
       />
     );
 
@@ -45,32 +46,65 @@ describe("AppHeader", () => {
         namespace="team-a"
         onNamespaceChange={jest.fn()}
         activeRunners={1}
-        runningScript="load.ts"
+        runnerCapacity={2}
+        activeRuns={[
+          {
+            id: "run_1",
+            namespace: "team-a",
+            script: "load.ts",
+            startedAt: 1,
+            runnerIndex: 0,
+            dashboardPort: 5665,
+          },
+        ]}
       />
     );
 
     expect(
       screen.getByTestId("active-runner-status").textContent?.trim()
     ).toBe(
-      "Active runner: 1/1"
+      "Active runner: 1/2"
     );
-    expect(screen.getByText("load.ts")).toBeInTheDocument();
   });
 
-  it("uses a wide responsive badge for the running script path", () => {
-    const runningScript = "team-a/folder/deeply/nested/load-test-script.ts";
+  it("opens a list of active running scripts from the runner label", () => {
     render(
       <AppHeader
         namespace="team-a"
         onNamespaceChange={jest.fn()}
-        activeRunners={1}
-        runningScript={runningScript}
+        activeRunners={2}
+        runnerCapacity={3}
+        activeRuns={[
+          {
+            id: "run_1",
+            namespace: "team-a",
+            script: "folder/deeply/nested/load-test-script.ts",
+            startedAt: 1,
+            runnerIndex: 0,
+            dashboardPort: 5665,
+          },
+          {
+            id: "run_2",
+            namespace: "default",
+            script: "smoke.ts",
+            startedAt: 2,
+            runnerIndex: 1,
+            dashboardPort: 5666,
+          },
+        ]}
       />
     );
 
-    const scriptBadge = screen.getByText(runningScript);
-    expect(scriptBadge).toHaveAttribute("title", runningScript);
-    expect(scriptBadge.className).toContain("max-w-[min(52vw,720px)]");
+    expect(
+      screen.queryByText("team-a/folder/deeply/nested/load-test-script.ts")
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Active runner: 2/3" }));
+
+    expect(
+      screen.getByText("team-a/folder/deeply/nested/load-test-script.ts")
+    ).toBeInTheDocument();
+    expect(screen.getByText("default/smoke.ts")).toBeInTheDocument();
   });
 
   it("places the namespace selector beside the app identity before runner status", () => {
@@ -79,7 +113,8 @@ describe("AppHeader", () => {
         namespace="team-a"
         onNamespaceChange={jest.fn()}
         activeRunners={0}
-        runningScript={null}
+        runnerCapacity={1}
+        activeRuns={[]}
       />
     );
 

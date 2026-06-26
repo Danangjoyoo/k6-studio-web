@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { RunStatus } from "@/lib/run-lock";
+import type { ActiveRun, RunStatus } from "@/lib/run-lock";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 
 export interface ScriptSession {
@@ -40,6 +40,8 @@ interface ScriptWorkspaceValue {
   globalRunningNamespace: string | null;
   globalRunningScript: string | null;
   activeRunners: number;
+  runnerCapacity: number;
+  globalRuns: ActiveRun[];
 }
 
 const ScriptWorkspaceContext = createContext<ScriptWorkspaceValue | null>(null);
@@ -81,7 +83,9 @@ export function ScriptWorkspaceProvider({
     null
   );
   const [activeRunners, setActiveRunners] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
+  const [runnerCapacity, setRunnerCapacity] = useState(1);
+  const [globalRuns, setGlobalRuns] = useState<ActiveRun[]>([]);
+  const abortRefs = useRef<Record<string, AbortController>>({});
 
   // Poll /api/run/status to get authoritative run state (works across tabs/users)
   useEffect(() => {
@@ -96,6 +100,8 @@ export function ScriptWorkspaceProvider({
             setGlobalRunningNamespace(status.namespace ?? null);
             setGlobalRunningScript(status.script);
             setActiveRunners(status.activeRunners);
+            setRunnerCapacity(status.capacity);
+            setGlobalRuns(status.runs ?? legacyStatusRun(status));
           }
         } catch {
           // ignore network errors during polling
@@ -119,9 +125,9 @@ export function ScriptWorkspaceProvider({
 
   const runScript = useCallback(async (filename: string) => {
     const key = sessionKey(namespace, filename);
-    abortRef.current?.abort();
+    abortRefs.current[key]?.abort();
     const controller = new AbortController();
-    abortRef.current = controller;
+    abortRefs.current[key] = controller;
 
     setRunningScript(filename);
     setRunEpoch((e) => e + 1);
@@ -151,11 +157,15 @@ export function ScriptWorkspaceProvider({
           })
         );
         setRunningScript(null);
+        delete abortRefs.current[key];
         return;
       }
 
       const reader = res.body?.getReader();
-      if (!reader) return;
+      if (!reader) {
+        delete abortRefs.current[key];
+        return;
+      }
 
       const decoder = new TextDecoder();
       let buf = "";
@@ -193,6 +203,7 @@ export function ScriptWorkspaceProvider({
                 })
               );
               setRunningScript(null);
+              delete abortRefs.current[key];
             }
           } catch {
             // malformed SSE frame — ignore
@@ -211,6 +222,7 @@ export function ScriptWorkspaceProvider({
         })
       );
       setRunningScript(null);
+      delete abortRefs.current[key];
     }
   }, [namespace]);
 
@@ -227,6 +239,8 @@ export function ScriptWorkspaceProvider({
       globalRunningNamespace,
       globalRunningScript,
       activeRunners,
+      runnerCapacity,
+      globalRuns,
     }),
     [
       namespace,
@@ -240,6 +254,8 @@ export function ScriptWorkspaceProvider({
       globalRunningNamespace,
       globalRunningScript,
       activeRunners,
+      runnerCapacity,
+      globalRuns,
     ]
   );
 
@@ -259,3 +275,25 @@ export function useScriptWorkspace() {
 }
 
 export { EMPTY_SESSION };
+
+function legacyStatusRun(status: RunStatus): ActiveRun[] {
+  if (
+    !status.running ||
+    !status.namespace ||
+    !status.script ||
+    !status.startedAt
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      id: "legacy-run",
+      namespace: status.namespace,
+      script: status.script,
+      startedAt: status.startedAt,
+      runnerIndex: 0,
+      dashboardPort: 5665,
+    },
+  ];
+}

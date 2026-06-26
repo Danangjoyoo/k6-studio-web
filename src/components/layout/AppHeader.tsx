@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import NamespaceSelector from "@/components/layout/NamespaceSelector";
+import type { ActiveRun } from "@/lib/run-lock";
 
 interface AppHeaderProps {
   namespace: string;
   onNamespaceChange: (namespace: string) => void;
   activeRunners?: number;
-  runningScript?: string | null;
+  runnerCapacity?: number;
+  activeRuns?: ActiveRun[];
 }
 
 /** Inline k6 wordmark path — matches the official k6 logomark style. */
@@ -41,9 +44,11 @@ export default function AppHeader({
   namespace,
   onNamespaceChange,
   activeRunners = 0,
-  runningScript = null,
+  runnerCapacity = 1,
+  activeRuns = [],
 }: AppHeaderProps) {
   const isRunning = activeRunners > 0;
+  const [runnerListOpen, setRunnerListOpen] = useState(false);
 
   return (
     <header className="load-lab-grid flex h-11 shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
@@ -70,9 +75,10 @@ export default function AppHeader({
         />
       </div>
 
-      <div className="ml-auto flex min-w-0 items-center gap-3">
+      <div className="relative ml-auto flex min-w-0 items-center gap-3">
         {/* Active runner counter — always visible so users understand capacity */}
-        <div
+        <button
+          type="button"
           data-testid="active-runner-status"
           className={cn(
             "flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wider transition-colors duration-200",
@@ -80,22 +86,42 @@ export default function AppHeader({
               ? "border-run/30 bg-run/10 text-run"
               : "border-border bg-panel-raised text-muted-foreground"
           )}
+          onClick={() => setRunnerListOpen((open) => !open)}
         >
           {isRunning && (
             <span className="h-1.5 w-1.5 rounded-full bg-run animate-pulse motion-reduce:animate-none" />
           )}
           <span>
-            Active runner: {activeRunners}/1
+            Active runner: {activeRunners}/{runnerCapacity}
           </span>
-        </div>
+        </button>
 
-        {isRunning && runningScript && (
-          <span
-            title={runningScript}
-            className="max-w-[min(52vw,720px)] truncate rounded border border-border bg-panel-raised px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
-          >
-            {runningScript}
-          </span>
+        {runnerListOpen && (
+          <div className="absolute right-0 top-8 z-50 min-w-72 rounded-md border border-border bg-popover p-2 shadow-lg">
+            <p className="px-1 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Active scripts
+            </p>
+            {activeRuns.length === 0 ? (
+              <p className="px-1 py-1 font-mono text-xs text-muted-foreground">
+                No active runners
+              </p>
+            ) : (
+              <ul className="flex max-h-56 flex-col gap-1 overflow-auto">
+                {activeRuns.map((run) => {
+                  const label = `${run.namespace}/${run.script}`;
+                  return (
+                    <li
+                      key={run.id}
+                      title={label}
+                      className="truncate rounded border border-border/70 bg-panel-raised px-2 py-1 font-mono text-xs text-foreground"
+                    >
+                      {label}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </header>

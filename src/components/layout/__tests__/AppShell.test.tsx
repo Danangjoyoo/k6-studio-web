@@ -11,6 +11,7 @@ let mockFileExplorerProps:
       namespace: string;
       selectedFile: string | null;
       globalRunningScript?: string | null;
+      globalRunningScripts?: string[];
       onFileRenamed?: (
         oldPath: string,
         newPath: string,
@@ -26,7 +27,12 @@ let mockWorkspaceProviderProps:
   | undefined;
 let mockEditorTabProps: { filename: string | null } | undefined;
 let mockLiveDashboardTabProps:
-  | { scriptName: string | null; isActiveRun: boolean; runEpoch: number }
+  | {
+      scriptName: string | null;
+      isActiveRun: boolean;
+      runEpoch: number;
+      runId?: string | null;
+    }
   | undefined;
 let mockTestHistoryTabProps:
   | { namespace: string; scriptName: string | null }
@@ -37,6 +43,16 @@ let mockWorkspaceState = {
   globalRunning: false,
   globalRunningNamespace: "default" as string | null,
   globalRunningScript: "running.js" as string | null,
+  activeRunners: 0,
+  runnerCapacity: 1,
+  globalRuns: [] as Array<{
+    id: string;
+    namespace: string;
+    script: string;
+    startedAt: number;
+    runnerIndex: number;
+    dashboardPort: number;
+  }>,
 };
 
 jest.mock("@/contexts/ScriptWorkspaceContext", () => ({
@@ -75,6 +91,7 @@ jest.mock("@/components/file-explorer/FileExplorer", () => ({
     onFileDeleted,
     onFileRenamed,
     globalRunningScript,
+    globalRunningScripts,
   }: {
     namespace: string;
     selectedFile: string | null;
@@ -86,6 +103,7 @@ jest.mock("@/components/file-explorer/FileExplorer", () => ({
       type?: "file" | "folder"
     ) => void;
     globalRunningScript?: string | null;
+    globalRunningScripts?: string[];
   }) => {
     mockOnFileDeleted = onFileDeleted;
     mockFileExplorerProps = {
@@ -93,6 +111,7 @@ jest.mock("@/components/file-explorer/FileExplorer", () => ({
       selectedFile,
       onFileRenamed,
       globalRunningScript,
+      globalRunningScripts,
     };
     return (
       <div data-testid="file-explorer">
@@ -142,15 +161,19 @@ jest.mock("@/components/layout/AppHeader", () => ({
   default: ({
     namespace,
     onNamespaceChange,
-    runningScript,
+    activeRunners,
+    runnerCapacity,
   }: {
     namespace: string;
     onNamespaceChange: (namespace: string) => void;
-    runningScript?: string | null;
+    activeRunners?: number;
+    runnerCapacity?: number;
   }) => (
     <div data-testid="app-header">
       <span data-testid="header-namespace">{namespace}</span>
-      <span data-testid="header-running-script">{runningScript ?? "none"}</span>
+      <span data-testid="header-active-runners">
+        {activeRunners}/{runnerCapacity}
+      </span>
       <button type="button" onClick={() => onNamespaceChange("team-a")}>
         switch-team-a
       </button>
@@ -172,6 +195,7 @@ jest.mock("@/components/tabs/LiveDashboardTab", () => ({
     scriptName: string | null;
     isActiveRun: boolean;
     runEpoch: number;
+    runId?: string | null;
   }) => {
     mockLiveDashboardTabProps = props;
     return <div data-testid="live-dashboard-tab" />;
@@ -201,6 +225,9 @@ describe("AppShell", () => {
       globalRunning: false,
       globalRunningNamespace: "default",
       globalRunningScript: "running.js",
+      activeRunners: 0,
+      runnerCapacity: 1,
+      globalRuns: [],
     };
   });
 
@@ -259,6 +286,21 @@ describe("AppShell", () => {
   });
 
   it("passes running script and updates selectedFile when FileExplorer reports a move", () => {
+    mockWorkspaceState = {
+      ...mockWorkspaceState,
+      activeRunners: 1,
+      globalRuns: [
+        {
+          id: "run_1",
+          namespace: "default",
+          script: "running.js",
+          startedAt: 1,
+          runnerIndex: 0,
+          dashboardPort: 5665,
+        },
+      ],
+    };
+
     render(<AppShell />);
 
     expect(mockFileExplorerProps?.globalRunningScript).toBe("running.js");
@@ -277,6 +319,18 @@ describe("AppShell", () => {
       globalRunning: true,
       globalRunningNamespace: "team-b",
       globalRunningScript: "test.js",
+      activeRunners: 1,
+      runnerCapacity: 1,
+      globalRuns: [
+        {
+          id: "run_1",
+          namespace: "team-b",
+          script: "test.js",
+          startedAt: 1,
+          runnerIndex: 0,
+          dashboardPort: 5665,
+        },
+      ],
     };
 
     render(<AppShell />);
@@ -297,6 +351,18 @@ describe("AppShell", () => {
       globalRunning: true,
       globalRunningNamespace: "default",
       globalRunningScript: "test.js",
+      activeRunners: 1,
+      runnerCapacity: 1,
+      globalRuns: [
+        {
+          id: "run_1",
+          namespace: "default",
+          script: "test.js",
+          startedAt: 1,
+          runnerIndex: 0,
+          dashboardPort: 5665,
+        },
+      ],
     };
 
     render(<AppShell />);
@@ -308,10 +374,9 @@ describe("AppShell", () => {
       scriptName: "test.js",
       isActiveRun: true,
       runEpoch: 7,
+      runId: "run_1",
     });
-    expect(screen.getByTestId("header-running-script")).toHaveTextContent(
-      "default/test.js"
-    );
+    expect(screen.getByTestId("header-active-runners")).toHaveTextContent("1/1");
     expect(mockEditorTabProps?.filename).toBe("test.js");
   });
 
