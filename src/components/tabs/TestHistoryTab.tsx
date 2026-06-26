@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import EmptyState from "@/components/layout/EmptyState";
 import PanelHeader from "@/components/layout/PanelHeader";
+import TestHistoryReportPreview from "@/components/tabs/TestHistoryReportPreview";
 import { cn } from "@/lib/utils";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 
@@ -166,22 +167,8 @@ export default function TestHistoryTab({
         </ScrollArea>
       </div>
 
-      <div className="flex flex-1 flex-col bg-panel p-3">
-        {selected ? (
-          <iframe
-            key={selected}
-            src={`/api/reports/${encodeURIComponent(selected)}?${namespaceQuery(namespace)}`}
-            className="h-full w-full rounded-md border border-border bg-white ring-1 ring-border"
-            title={selected}
-            sandbox="allow-scripts allow-same-origin"
-          />
-        ) : (
-          <EmptyState
-            icon={FileText}
-            title="Select a report"
-            description="Choose a report from the list to view results."
-          />
-        )}
+      <div className="flex min-w-0 flex-1 flex-col bg-panel">
+        <TestHistoryReportPreview namespace={namespace} reportName={selected} />
       </div>
     </div>
   );
