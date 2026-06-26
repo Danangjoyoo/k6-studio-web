@@ -58,7 +58,22 @@ export async function ensureBuckets(): Promise<void> {
   for (const bucket of [SCRIPTS_BUCKET, REPORTS_BUCKET]) {
     const exists = await c.bucketExists(bucket);
     if (!exists) {
-      await c.makeBucket(bucket, "us-east-1");
+      try {
+        await c.makeBucket(bucket, "us-east-1");
+      } catch (error) {
+        if (!isBucketAlreadyOwnedError(error)) {
+          throw error;
+        }
+      }
     }
   }
+}
+
+function isBucketAlreadyOwnedError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "BucketAlreadyOwnedByYou"
+  );
 }

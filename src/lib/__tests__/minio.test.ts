@@ -85,3 +85,41 @@ describe("getMinioClient env parsing", () => {
     expect(client.protocol).toBe("https:");
   });
 });
+
+describe("ensureBuckets", () => {
+  afterEach(() => {
+    jest.dontMock("minio");
+    jest.resetModules();
+  });
+
+  it("treats a concurrent bucket create as successful", async () => {
+    const mockClient = {
+      bucketExists: jest.fn().mockResolvedValue(false),
+      makeBucket: jest
+        .fn()
+        .mockRejectedValueOnce(
+          Object.assign(new Error("already owned"), {
+            code: "BucketAlreadyOwnedByYou",
+          })
+        )
+        .mockResolvedValueOnce(undefined),
+    };
+
+    jest.resetModules();
+    jest.doMock("minio", () => ({
+      Client: jest.fn(() => mockClient),
+    }));
+
+    const { ensureBuckets } = await import("@/lib/minio");
+
+    await expect(ensureBuckets()).resolves.toBeUndefined();
+    expect(mockClient.makeBucket).toHaveBeenCalledWith(
+      "k6-scripts",
+      "us-east-1"
+    );
+    expect(mockClient.makeBucket).toHaveBeenCalledWith(
+      "k6-reports",
+      "us-east-1"
+    );
+  });
+});
