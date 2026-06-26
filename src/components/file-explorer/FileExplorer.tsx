@@ -24,6 +24,7 @@ export interface FileExplorerProps {
     type?: MoveSelectionType
   ) => void;
   globalRunningScript?: string | null;
+  globalRunningScripts?: string[];
 }
 
 type MoveSelectionType = "file" | "folder";
@@ -56,6 +57,8 @@ export default () => {
 };
 `;
 
+const EMPTY_RUNNING_SCRIPTS: string[] = [];
+
 export default function FileExplorer({
   namespace = DEFAULT_NAMESPACE,
   selectedFile,
@@ -63,6 +66,7 @@ export default function FileExplorer({
   onFileDeleted,
   onFileRenamed,
   globalRunningScript = null,
+  globalRunningScripts = EMPTY_RUNNING_SCRIPTS,
 }: FileExplorerProps) {
   const [tree, setTree] = useState<FileNode[]>([]);
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
@@ -79,6 +83,11 @@ export default function FileExplorer({
   const dragSourceRef = useRef<MoveSelection | null>(null);
   const knownFolderPathsRef = useRef<Set<string>>(new Set());
   const fetchTreeRequestIdRef = useRef(0);
+  const activeRunningScripts = useMemo(() => {
+    const scripts = [...globalRunningScripts];
+    if (globalRunningScript) scripts.push(globalRunningScript);
+    return Array.from(new Set(scripts.filter(Boolean)));
+  }, [globalRunningScript, globalRunningScripts]);
 
   const fetchTree = useCallback(async () => {
     const requestId = ++fetchTreeRequestIdRef.current;
@@ -256,7 +265,7 @@ export default function FileExplorer({
     item: MoveSelection,
     checked: boolean
   ) {
-    if (isMovementDisabled(item, globalRunningScript)) return;
+    if (isMovementDisabled(item, activeRunningScripts)) return;
     const key = selectionKey(item);
     setMoveStatus(null);
     setLastSelectionKey(key);
@@ -269,7 +278,7 @@ export default function FileExplorer({
   }
 
   function toggleMoveSelection(item: MoveSelection) {
-    if (isMovementDisabled(item, globalRunningScript)) return;
+    if (isMovementDisabled(item, activeRunningScripts)) return;
     const key = selectionKey(item);
     setMoveStatus(null);
     setLastSelectionKey(key);
@@ -282,7 +291,7 @@ export default function FileExplorer({
   }
 
   function selectVisibleRange(item: MoveSelection) {
-    if (isMovementDisabled(item, globalRunningScript)) return;
+    if (isMovementDisabled(item, activeRunningScripts)) return;
     const itemKey = selectionKey(item);
     const startKey = lastSelectionKey ?? itemKey;
     const startIndex = visibleMoveRows.findIndex((row) => row.key === startKey);
@@ -354,13 +363,13 @@ export default function FileExplorer({
     const source = dragSourceRef.current;
     setDropTarget(null);
     dragSourceRef.current = null;
-    if (!source || isMovementDisabled(source, globalRunningScript)) return;
+    if (!source || isMovementDisabled(source, activeRunningScripts)) return;
 
     const sourceKey = selectionKey(source);
     const selectedItems = Object.values(selection);
     const rawItems = selection[sourceKey] ? selectedItems : [source];
     const items = pruneNestedSelections(
-      rawItems.filter((item) => !isMovementDisabled(item, globalRunningScript))
+      rawItems.filter((item) => !isMovementDisabled(item, activeRunningScripts))
     );
     if (items.length === 0) return;
 
@@ -422,7 +431,7 @@ export default function FileExplorer({
           type: "folder",
         };
         const folderPath = normalizeFolderPath(node.path);
-        const disabled = isMovementDisabled(item, globalRunningScript);
+        const disabled = isMovementDisabled(item, activeRunningScripts);
         const isOpen = expandedFolders.has(folderPath);
         return (
           <FolderItem
@@ -475,7 +484,7 @@ export default function FileExplorer({
         );
       }
       const item: MoveSelection = { path: node.path, type: "file" };
-      const disabled = isMovementDisabled(item, globalRunningScript);
+      const disabled = isMovementDisabled(item, activeRunningScripts);
       return (
         <FileItem
           key={node.path}
@@ -512,17 +521,17 @@ export default function FileExplorer({
       collectVisibleMoveRows(
         tree,
         new Set(flattenFolderPaths(tree)),
-        globalRunningScript
+        activeRunningScripts
       ),
-    [tree, globalRunningScript]
+    [tree, activeRunningScripts]
   );
   const allMoveRowsByKey = useMemo(
     () => new Map(allMoveRows.map((row) => [row.key, row])),
     [allMoveRows]
   );
   const visibleMoveRows = useMemo(
-    () => collectVisibleMoveRows(filteredTree, expandedFolders, globalRunningScript),
-    [filteredTree, expandedFolders, globalRunningScript]
+    () => collectVisibleMoveRows(filteredTree, expandedFolders, activeRunningScripts),
+    [filteredTree, expandedFolders, activeRunningScripts]
   );
   const showSelectionControls = Object.keys(selection).length > 0;
 
@@ -671,7 +680,7 @@ function flattenFolderPaths(nodes: FileNode[]): string[] {
 function collectVisibleMoveRows(
   nodes: FileNode[],
   expandedFolders: Set<string>,
-  runningScript: string | null
+  runningScripts: string[]
 ): VisibleMoveRow[] {
   const rows: VisibleMoveRow[] = [];
   for (const node of nodes) {
@@ -683,14 +692,14 @@ function collectVisibleMoveRows(
       rows.push({
         ...item,
         key: selectionKey(item),
-        disabled: isMovementDisabled(item, runningScript),
+        disabled: isMovementDisabled(item, runningScripts),
       });
       if (expandedFolders.has(item.path)) {
         rows.push(
           ...collectVisibleMoveRows(
             node.children ?? [],
             expandedFolders,
-            runningScript
+            runningScripts
           )
         );
       }
@@ -699,7 +708,7 @@ function collectVisibleMoveRows(
       rows.push({
         ...item,
         key: selectionKey(item),
-        disabled: isMovementDisabled(item, runningScript),
+        disabled: isMovementDisabled(item, runningScripts),
       });
     }
   }
@@ -708,11 +717,13 @@ function collectVisibleMoveRows(
 
 function isMovementDisabled(
   item: MoveSelection,
-  runningScript: string | null
+  runningScripts: string[]
 ): boolean {
-  if (!runningScript) return false;
-  if (item.type === "file") return item.path === runningScript;
-  return runningScript.startsWith(`${item.path.replace(/\/+$/, "")}/`);
+  if (runningScripts.length === 0) return false;
+  if (item.type === "file") return runningScripts.includes(item.path);
+  return runningScripts.some((runningScript) =>
+    runningScript.startsWith(`${item.path.replace(/\/+$/, "")}/`)
+  );
 }
 
 function pruneNestedSelections(items: MoveSelection[]): MoveSelection[] {

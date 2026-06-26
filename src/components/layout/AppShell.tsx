@@ -85,6 +85,7 @@ function WorkspaceContent({
             onFileDeleted={onFileDeleted}
             onFileRenamed={onFileRenamed}
             globalRunningScript={runningScriptsForNamespace[0] ?? null}
+            globalRunningScripts={runningScriptsForNamespace}
           />
         </ResizablePanel>
 

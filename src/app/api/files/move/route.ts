@@ -61,9 +61,7 @@ export async function POST(request: Request) {
     listNamespace(client, REPORTS_BUCKET, namespace),
   ]);
   const status = getStatus() as RunStatusWithLegacyName;
-  const activeRunningScript = status.running && status.namespace === namespace
-    ? status.script ?? status.runningScript ?? null
-    : null;
+  const activeRunningScripts = activeScriptsForNamespace(status, namespace);
 
   try {
     const plan = buildMovePlan({
@@ -71,7 +69,7 @@ export async function POST(request: Request) {
       targetFolder: body.targetFolder,
       existingScriptObjectKeys: scriptObjectKeys,
       existingReportObjectKeys: reportObjectKeys,
-      activeRunningScript,
+      activeRunningScripts,
     });
 
     await executeMovePlan(client, plan, namespace);
@@ -91,6 +89,20 @@ export async function POST(request: Request) {
     }
     throw error;
   }
+}
+
+function activeScriptsForNamespace(
+  status: RunStatusWithLegacyName,
+  namespace: string
+): string[] {
+  const runs = "runs" in status && Array.isArray(status.runs) ? status.runs : [];
+  const scripts = runs
+    .filter((run) => run.namespace === namespace)
+    .map((run) => run.script);
+  if (scripts.length > 0) return scripts;
+  return status.running && status.namespace === namespace
+    ? [status.script ?? status.runningScript ?? ""].filter(Boolean)
+    : [];
 }
 
 async function listNamespace(

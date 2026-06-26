@@ -25,6 +25,7 @@ interface BuildMovePlanInput {
   existingScriptObjectKeys: string[];
   existingReportObjectKeys: string[];
   activeRunningScript?: string | null;
+  activeRunningScripts?: string[];
 }
 
 interface BuildRenamePlanInput {
@@ -34,6 +35,7 @@ interface BuildRenamePlanInput {
   existingScriptObjectKeys: string[];
   existingReportObjectKeys: string[];
   activeRunningScript?: string | null;
+  activeRunningScripts?: string[];
 }
 
 interface NormalizedMoveItem extends MoveItem {
@@ -63,9 +65,7 @@ export function buildMovePlan(input: BuildMovePlanInput): MovePlan {
   const reportKeys = input.existingReportObjectKeys.map(normalizeObjectKey);
   const scriptKeySet = new Set(scriptKeys);
   const reportKeySet = new Set(reportKeys);
-  const runningScript = input.activeRunningScript
-    ? normalizeObjectPath(input.activeRunningScript, "active running script")
-    : null;
+  const runningScripts = normalizeRunningScripts(input);
 
   rejectRedundantNestedSelections(items);
 
@@ -84,7 +84,7 @@ export function buildMovePlan(input: BuildMovePlanInput): MovePlan {
       );
     }
 
-    rejectRunningScriptMove(item, runningScript);
+    rejectRunningScriptMove(item, runningScripts);
   }
 
   const scriptObjectMoves: ObjectMove[] = [];
@@ -152,16 +152,14 @@ export function buildRenamePlan(input: BuildRenamePlanInput): MovePlan {
   const reportKeys = input.existingReportObjectKeys.map(normalizeObjectKey);
   const scriptKeySet = new Set(scriptKeys);
   const reportKeySet = new Set(reportKeys);
-  const runningScript = input.activeRunningScript
-    ? normalizeObjectPath(input.activeRunningScript, "active running script")
-    : null;
+  const runningScripts = normalizeRunningScripts(input);
   const item: NormalizedMoveItem = {
     path: from,
     type: input.type,
     name: baseName(from),
   };
 
-  rejectRunningScriptMove(item, runningScript);
+  rejectRunningScriptMove(item, runningScripts);
 
   const scriptObjectMoves: ObjectMove[] = [];
   const scriptFilePathMoves: ObjectMove[] = [];
@@ -333,20 +331,41 @@ function rejectRedundantNestedSelections(items: NormalizedMoveItem[]) {
 
 function rejectRunningScriptMove(
   item: NormalizedMoveItem,
-  runningScript: string | null
+  runningScripts: string[]
 ) {
-  if (!runningScript) return;
+  if (runningScripts.length === 0) return;
 
-  if (item.type === "file" && item.path === runningScript) {
+  if (
+    item.type === "file" &&
+    runningScripts.some((runningScript) => item.path === runningScript)
+  ) {
     throw new MoveConflictError("Cannot move a script while it is running", 409);
   }
 
-  if (item.type === "folder" && runningScript.startsWith(folderPrefix(item.path))) {
+  if (
+    item.type === "folder" &&
+    runningScripts.some((runningScript) =>
+      runningScript.startsWith(folderPrefix(item.path))
+    )
+  ) {
     throw new MoveConflictError(
       "Cannot move a folder containing the running script",
       409
     );
   }
+}
+
+function normalizeRunningScripts(input: {
+  activeRunningScript?: string | null;
+  activeRunningScripts?: string[];
+}): string[] {
+  const scripts = [
+    ...(input.activeRunningScripts ?? []),
+    ...(input.activeRunningScript ? [input.activeRunningScript] : []),
+  ];
+  return Array.from(new Set(scripts)).map((script) =>
+    normalizeObjectPath(script, "active running script")
+  );
 }
 
 function isFolderInsideItself(sourceFolder: string, targetFolder: string): boolean {

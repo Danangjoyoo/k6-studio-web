@@ -1014,6 +1014,27 @@ describe("FileExplorer", () => {
     expect(onSelectFile).toHaveBeenCalledWith("suite/run.ts");
   });
 
+  it("disables move controls for every active running script", async () => {
+    mockFilesTree(scriptsTree());
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+        globalRunningScripts={["src/a.ts", "other/c.ts"]}
+      />
+    );
+
+    expect(
+      await screen.findByRole("checkbox", { name: "Select src" })
+    ).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Select a.ts" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Select other" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Select c.ts" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Select b.ts" })).not.toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Select dest" })).not.toBeDisabled();
+  });
+
   it("does not move when dragging the running script onto a valid folder target", async () => {
     mockFilesTree(scriptsTree());
 

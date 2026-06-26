@@ -42,3 +42,30 @@ describe("report tab sidecar moves", () => {
     ]);
   });
 });
+
+describe("multiple active runner protections", () => {
+  it("blocks moving any file that is currently running", () => {
+    expect(() =>
+      buildMovePlan({
+        items: [{ path: "src/b.ts", type: "file" }],
+        targetFolder: "dest",
+        existingScriptObjectKeys: ["src/a.ts", "src/b.ts"],
+        existingReportObjectKeys: [],
+        activeRunningScripts: ["src/a.ts", "src/b.ts"],
+      })
+    ).toThrow("Cannot move a script while it is running");
+  });
+
+  it("blocks moving a folder containing any currently running script", () => {
+    expect(() =>
+      buildRenamePlan({
+        from: "src",
+        to: "renamed",
+        type: "folder",
+        existingScriptObjectKeys: ["src/a.ts", "src/nested/b.ts"],
+        existingReportObjectKeys: [],
+        activeRunningScripts: ["src/nested/b.ts"],
+      })
+    ).toThrow("Cannot move a folder containing the running script");
+  });
+});
