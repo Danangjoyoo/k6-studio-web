@@ -69,7 +69,7 @@ describe("TestHistoryReportPreview", () => {
     );
   });
 
-  it("creates a focused draft note from the add button without persisting", async () => {
+  it("creates a draft note from the add button without focusing the title", async () => {
     mockNotes();
 
     render(
@@ -82,8 +82,33 @@ describe("TestHistoryReportPreview", () => {
       "aria-selected",
       "true"
     );
-    expect(screen.getByLabelText("Note title")).toHaveFocus();
+    expect(screen.getByLabelText("Note title")).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "Edit note" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Markdown note")).not.toBeInTheDocument();
     expect(putBodies()).toEqual([]);
+  });
+
+  it("loads persisted notes in preview mode by default", async () => {
+    mockNotes([
+      {
+        id: "note_1",
+        title: "Findings",
+        markdown: "# Persisted finding",
+      },
+    ]);
+
+    render(
+      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Findings" }));
+
+    expect(screen.getByLabelText("Note title")).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "Edit note" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Persisted finding" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Markdown note")).not.toBeInTheDocument();
   });
 
   it("places the add button after summary and note tabs", async () => {
@@ -119,6 +144,7 @@ describe("TestHistoryReportPreview", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
     fireEvent.change(screen.getByLabelText("Note title"), {
       target: { value: "Investigation" },
     });
@@ -140,11 +166,88 @@ describe("TestHistoryReportPreview", () => {
       ],
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Preview note" }));
     expect(screen.getByRole("heading", { name: "Findings" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "chart" })).toHaveAttribute(
       "src",
       "/chart.png"
+    );
+  });
+
+  it("keeps note close buttons after the title instead of overlaying it", async () => {
+    mockNotes([{ id: "note_1", title: "Long Findings", markdown: "## ok" }]);
+
+    render(
+      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
+    );
+
+    const closeButton = await screen.findByRole("button", {
+      name: "Close note Long Findings",
+    });
+
+    expect(closeButton).not.toHaveClass("-ml-7");
+    expect(closeButton).toHaveClass("shrink-0");
+    expect(closeButton.parentElement).toHaveClass(
+      "grid",
+      "grid-cols-[minmax(0,1fr)_auto]"
+    );
+  });
+
+  it("resets note tabs to preview mode whenever they are selected", async () => {
+    mockNotes([
+      {
+        id: "note_1",
+        title: "Findings",
+        markdown: "# Persisted finding",
+      },
+      {
+        id: "note_2",
+        title: "Runbook",
+        markdown: "# Runbook note",
+      },
+    ]);
+
+    render(
+      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Findings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+
+    expect(screen.getByRole("button", { name: "Preview note" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Markdown note")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Findings" }));
+
+    expect(screen.getByRole("button", { name: "Edit note" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Markdown note")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Persisted finding" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Runbook" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Findings" }));
+
+    expect(screen.getByRole("button", { name: "Edit note" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Markdown note")).not.toBeInTheDocument();
+  });
+
+  it("makes note action buttons visibly interactive on hover", async () => {
+    mockNotes();
+
+    render(
+      <TestHistoryReportPreview namespace="team-a" reportName="smoke.ts-1.html" />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+
+    expect(screen.getByRole("button", { name: "Edit note" })).toHaveClass(
+      "hover:border-primary/60",
+      "hover:bg-panel-raised"
+    );
+    expect(screen.getByRole("button", { name: "Save note" })).toHaveClass(
+      "hover:bg-primary/90",
+      "hover:ring-1"
     );
   });
 
@@ -178,6 +281,7 @@ describe("TestHistoryReportPreview", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
     const editor = screen.getByLabelText("Markdown note");
     fireEvent.change(editor, { target: { value: "Before\n" } });
 

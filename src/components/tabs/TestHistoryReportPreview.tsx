@@ -17,12 +17,15 @@ interface TestHistoryReportPreviewProps {
 type NoteTab = ReportNote & {
   persisted: boolean;
   dirty: boolean;
-  preview: boolean;
   error: string | null;
 };
 
 const SUMMARY_TAB_ID = "summary";
 const UNTITLED_NOTE = "Untitled note";
+const NOTE_SECONDARY_ACTION_CLASS =
+  "border border-border bg-panel-raised text-muted-foreground shadow-sm hover:border-primary/60 hover:bg-panel-raised hover:text-foreground hover:ring-1 hover:ring-primary/30";
+const NOTE_PRIMARY_ACTION_CLASS =
+  "border border-primary/60 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:ring-1 hover:ring-primary/50";
 
 export default function TestHistoryReportPreview({
   namespace,
@@ -30,10 +33,10 @@ export default function TestHistoryReportPreview({
 }: TestHistoryReportPreviewProps) {
   const [notes, setNotes] = useState<NoteTab[]>([]);
   const [activeTabId, setActiveTabId] = useState(SUMMARY_TAB_ID);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const requestIdRef = useRef(0);
-  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!reportName) return;
@@ -43,6 +46,7 @@ export default function TestHistoryReportPreview({
     setSaveError(null);
     setNotes([]);
     setActiveTabId(SUMMARY_TAB_ID);
+    setEditingNoteId(null);
 
     fetch(reportNotesApiUrl(reportName, namespace))
       .then(async (response) => {
@@ -71,12 +75,6 @@ export default function TestHistoryReportPreview({
     [activeTabId, notes]
   );
 
-  useEffect(() => {
-    if (activeTabId !== SUMMARY_TAB_ID) {
-      titleInputRef.current?.focus();
-    }
-  }, [activeTabId]);
-
   if (!reportName) {
     return (
       <EmptyState
@@ -95,11 +93,21 @@ export default function TestHistoryReportPreview({
       markdown: "",
       persisted: false,
       dirty: true,
-      preview: false,
       error: null,
     };
     setNotes((current) => [...current, draft]);
     setActiveTabId(id);
+    setEditingNoteId(null);
+  }
+
+  function selectSummaryTab() {
+    setActiveTabId(SUMMARY_TAB_ID);
+    setEditingNoteId(null);
+  }
+
+  function selectNoteTab(id: string) {
+    setActiveTabId(id);
+    setEditingNoteId(null);
   }
 
   function handleCloseNote(id: string) {
@@ -108,6 +116,9 @@ export default function TestHistoryReportPreview({
     setNotes(nextNotes);
     if (activeTabId === id) {
       setActiveTabId(SUMMARY_TAB_ID);
+    }
+    if (editingNoteId === id) {
+      setEditingNoteId(null);
     }
     if (closing?.persisted) {
       void persistNotes(nextNotes);
@@ -142,13 +153,8 @@ export default function TestHistoryReportPreview({
         : note
     );
     setNotes(nextNotes);
+    setEditingNoteId(null);
     void persistNotes(nextNotes);
-  }
-
-  function togglePreview(id: string, preview: boolean) {
-    setNotes((current) =>
-      current.map((note) => (note.id === id ? { ...note, preview } : note))
-    );
   }
 
   function handleEditorPaste(
@@ -225,6 +231,7 @@ export default function TestHistoryReportPreview({
   }
 
   const summarySelected = activeTabId === SUMMARY_TAB_ID || !activeNote;
+  const activeNoteIsEditing = activeNote ? editingNoteId === activeNote.id : false;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-panel">
@@ -239,7 +246,7 @@ export default function TestHistoryReportPreview({
             role="tab"
             aria-selected={summarySelected}
             className={tabClassName(summarySelected)}
-            onClick={() => setActiveTabId(SUMMARY_TAB_ID)}
+            onClick={selectSummaryTab}
           >
             Summary
           </button>
@@ -247,13 +254,16 @@ export default function TestHistoryReportPreview({
           {notes.map((note) => {
             const selected = activeTabId === note.id;
             return (
-              <div key={note.id} className="flex min-w-0 items-center">
+              <div
+                key={note.id}
+                className={noteTabShellClassName(selected)}
+              >
                 <button
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  className={cn(tabClassName(selected), "max-w-48")}
-                  onClick={() => setActiveTabId(note.id)}
+                  className="min-w-0 truncate px-3 text-left"
+                  onClick={() => selectNoteTab(note.id)}
                 >
                   <span className="truncate">{note.title || UNTITLED_NOTE}</span>
                 </button>
@@ -261,7 +271,7 @@ export default function TestHistoryReportPreview({
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  className="mb-1 -ml-7 h-5 w-5 text-muted-foreground hover:text-foreground"
+                  className="mr-1 h-5 w-5 shrink-0 border border-border/70 bg-panel-raised text-muted-foreground hover:border-primary/60 hover:bg-panel hover:text-foreground"
                   aria-label={`Close note ${note.title || UNTITLED_NOTE}`}
                   onClick={() => handleCloseNote(note.id)}
                 >
@@ -305,7 +315,6 @@ export default function TestHistoryReportPreview({
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-2 py-2">
               <Input
-                ref={titleInputRef}
                 aria-label="Note title"
                 className="h-7 max-w-80 font-mono text-xs"
                 value={activeNote.title}
@@ -318,19 +327,23 @@ export default function TestHistoryReportPreview({
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label={activeNote.preview ? "Edit note" : "Preview note"}
-                onClick={() => togglePreview(activeNote.id, !activeNote.preview)}
+                className={NOTE_SECONDARY_ACTION_CLASS}
+                aria-label={activeNoteIsEditing ? "Preview note" : "Edit note"}
+                onClick={() =>
+                  setEditingNoteId(activeNoteIsEditing ? null : activeNote.id)
+                }
               >
-                {activeNote.preview ? (
-                  <Pencil className="h-3.5 w-3.5" />
-                ) : (
+                {activeNoteIsEditing ? (
                   <Eye className="h-3.5 w-3.5" />
+                ) : (
+                  <Pencil className="h-3.5 w-3.5" />
                 )}
-                {activeNote.preview ? "Edit" : "Preview"}
+                {activeNoteIsEditing ? "Preview" : "Edit"}
               </Button>
               <Button
                 type="button"
                 size="sm"
+                className={NOTE_PRIMARY_ACTION_CLASS}
                 aria-label="Save note"
                 onClick={() => handleSaveNote(activeNote.id)}
               >
@@ -346,11 +359,7 @@ export default function TestHistoryReportPreview({
             )}
 
             <div className="min-h-0 flex-1 p-3">
-              {activeNote.preview ? (
-                <div className="h-full overflow-auto rounded-md border border-border bg-panel px-4 py-3 ring-1 ring-border">
-                  <MarkdownPreview markdown={activeNote.markdown} />
-                </div>
-              ) : (
+              {activeNoteIsEditing ? (
                 <textarea
                   aria-label="Markdown note"
                   className="h-full w-full resize-none rounded-md border border-border bg-panel px-3 py-2 font-mono text-xs text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:border-primary"
@@ -365,6 +374,10 @@ export default function TestHistoryReportPreview({
                   }
                   onPaste={(event) => handleEditorPaste(event, activeNote.id)}
                 />
+              ) : (
+                <div className="h-full overflow-auto rounded-md border border-border bg-panel px-4 py-3 ring-1 ring-border">
+                  <MarkdownPreview markdown={activeNote.markdown} />
+                </div>
               )}
             </div>
           </div>
@@ -380,7 +393,6 @@ function toNoteTab(note: ReportNote): NoteTab {
     title: note.title || UNTITLED_NOTE,
     persisted: true,
     dirty: false,
-    preview: false,
     error: null,
   };
 }
@@ -410,6 +422,15 @@ function namespaceQuery(namespace: string): string {
 function tabClassName(selected: boolean): string {
   return cn(
     "mb-0 inline-flex h-8 min-w-0 items-center gap-1 rounded-t-md border border-border border-b-0 px-3 text-xs font-medium transition-colors",
+    selected
+      ? "bg-panel text-foreground"
+      : "bg-panel-raised text-muted-foreground hover:text-foreground"
+  );
+}
+
+function noteTabShellClassName(selected: boolean): string {
+  return cn(
+    "mb-0 grid h-8 min-w-0 max-w-56 grid-cols-[minmax(0,1fr)_auto] items-center rounded-t-md border border-border border-b-0 text-xs font-medium transition-colors",
     selected
       ? "bg-panel text-foreground"
       : "bg-panel-raised text-muted-foreground hover:text-foreground"
