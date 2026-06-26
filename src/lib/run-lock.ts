@@ -1,17 +1,20 @@
 import { DEFAULT_NAMESPACE, normalizeNamespace } from "@/lib/namespaces";
 
 /**
- * Global single-run lock for the k6 web dashboard.
+ * In-process runner slot registry for k6 runs.
  *
- * Because the k6 dashboard binds a single fixed port (5665) there can only
- * ever be one active run at a time. This module tracks that exclusively so
- * concurrent POST /api/run requests are rejected (HTTP 409) rather than racing
- * to kill each other, which previously left the port briefly bound and caused
- * the second run's dashboard to fail.
- *
- * This is a plain in-process singleton which is valid because Next.js
- * (standalone) runs as a single Node.js process inside the Docker container.
+ * Next standalone runs as one Node.js process in the current deployment model,
+ * so an in-memory registry is enough to coordinate local k6 child processes.
  */
+
+export interface ActiveRun {
+  id: string;
+  namespace: string;
+  script: string;
+  startedAt: number;
+  runnerIndex: number;
+  dashboardPort: number;
+}
 
 export interface RunStatus {
   running: boolean;
@@ -19,52 +22,94 @@ export interface RunStatus {
   script: string | null;
   startedAt: number | null;
   activeRunners: number;
-  capacity: 1;
+  capacity: number;
+  runs: ActiveRun[];
 }
 
-let _running = false;
-let _namespace: string | null = null;
-let _script: string | null = null;
-let _startedAt: number | null = null;
+let runs: ActiveRun[] = [];
+let runSequence = 0;
 
-/** Attempt to acquire the lock for `script`. Returns `true` on success. */
+export function getRunnerCapacity(): number {
+  const parsed = Number.parseInt(process.env.TOTAL_RUNNERS ?? "1", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return parsed;
+}
+
+export function getDashboardBasePort(): number {
+  const parsed = Number.parseInt(process.env.K6_DASHBOARD_PORT ?? "5665", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 5665;
+  return parsed;
+}
+
+/** Attempt to acquire a runner slot for `script`. Returns the run on success. */
 export function tryAcquire(
   script: string,
   namespace: string = DEFAULT_NAMESPACE
-): boolean {
-  if (_running) return false;
+): ActiveRun | null {
   const normalizedNamespace = normalizeNamespace(namespace);
-  _running = true;
-  _namespace = normalizedNamespace;
-  _script = script;
-  _startedAt = Date.now();
-  return true;
+  const capacity = getRunnerCapacity();
+
+  if (
+    runs.some(
+      (run) => run.namespace === normalizedNamespace && run.script === script
+    )
+  ) {
+    return null;
+  }
+
+  if (runs.length >= capacity) return null;
+
+  const usedIndexes = new Set(runs.map((run) => run.runnerIndex));
+  let runnerIndex = 0;
+  while (usedIndexes.has(runnerIndex)) {
+    runnerIndex += 1;
+  }
+
+  const run: ActiveRun = {
+    id: `run_${Date.now()}_${runSequence++}_${runnerIndex}`,
+    namespace: normalizedNamespace,
+    script,
+    startedAt: Date.now(),
+    runnerIndex,
+    dashboardPort: getDashboardBasePort() + runnerIndex,
+  };
+  runs = [...runs, run].sort((a, b) => a.startedAt - b.startedAt);
+  return run;
 }
 
-/** Release the lock. No-op if already released. */
-export function release(): void {
-  _running = false;
-  _namespace = null;
-  _script = null;
-  _startedAt = null;
+/**
+ * Release a run. When called without an id, clear all runs for backward
+ * compatibility with existing tests and setup-failure cleanup.
+ */
+export function release(runId?: string): void {
+  if (!runId) {
+    runs = [];
+    return;
+  }
+  runs = runs.filter((run) => run.id !== runId);
 }
 
-/** Current lock status, safe to expose over HTTP. */
+export function getRunById(runId: string): ActiveRun | null {
+  return runs.find((run) => run.id === runId) ?? null;
+}
+
+/** Current runner status, safe to expose over HTTP. */
 export function getStatus(): RunStatus {
+  const orderedRuns = [...runs].sort((a, b) => a.startedAt - b.startedAt);
+  const oldest = orderedRuns[0] ?? null;
   return {
-    running: _running,
-    namespace: _namespace,
-    script: _script,
-    startedAt: _startedAt,
-    activeRunners: _running ? 1 : 0,
-    capacity: 1,
+    running: orderedRuns.length > 0,
+    namespace: oldest?.namespace ?? null,
+    script: oldest?.script ?? null,
+    startedAt: oldest?.startedAt ?? null,
+    activeRunners: orderedRuns.length,
+    capacity: getRunnerCapacity(),
+    runs: orderedRuns,
   };
 }
 
 /** Reset all state (test helper only). */
 export function _reset(): void {
-  _running = false;
-  _namespace = null;
-  _script = null;
-  _startedAt = null;
+  runs = [];
+  runSequence = 0;
 }
