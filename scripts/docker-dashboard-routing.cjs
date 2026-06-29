@@ -15,6 +15,10 @@ function stripAppBasePath(pathname) {
   return pathname;
 }
 
+function buildRunStatusUrl(internalPort) {
+  return `http://127.0.0.1:${internalPort}${APP_BASE_PATH}/api/run/status`;
+}
+
 function extractRunId(pathname) {
   pathname = stripAppBasePath(pathname);
   const segments = pathname.split("/");
@@ -97,6 +101,7 @@ module.exports = {
   DASHBOARD_BASE_PORT,
   DASHBOARD_PREFIX,
   MAX_RUNNERS,
+  buildRunStatusUrl,
   getScopedRunId,
   isDashboardUrl,
   resolveDashboardPort,

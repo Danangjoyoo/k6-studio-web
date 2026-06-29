@@ -8,6 +8,7 @@ import httpProxy from "http-proxy";
 import dashboardRouting from "./docker-dashboard-routing.cjs";
 
 const {
+  buildRunStatusUrl,
   getScopedRunId,
   isDashboardUrl,
   resolveDashboardTarget,
@@ -76,10 +77,9 @@ async function getActiveRunsForDashboardUrl(url) {
   if (!getScopedRunId(url)) return undefined;
 
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${INTERNAL_PORT}/api/run/status`,
-      { cache: "no-store" }
-    );
+    const response = await fetch(buildRunStatusUrl(INTERNAL_PORT), {
+      cache: "no-store",
+    });
     if (!response.ok) return [];
     const status = await response.json();
     return Array.isArray(status.runs) ? status.runs : [];

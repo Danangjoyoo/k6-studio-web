@@ -57,4 +57,10 @@ describe("docker dashboard routing helpers", () => {
       ])
     ).toBeNull();
   });
+
+  it("builds the internal run status URL with the app base path", () => {
+    const { buildRunStatusUrl } = require("../docker-dashboard-routing.cjs");
+
+    expect(buildRunStatusUrl(3001)).toBe("http://127.0.0.1:3001/k6/api/run/status");
+  });
 });
