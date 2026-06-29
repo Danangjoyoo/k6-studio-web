@@ -46,6 +46,16 @@ interface ScriptWorkspaceValue {
   globalRuns: ActiveRun[];
 }
 
+interface RunStreamMessage {
+  line?: string;
+  started?: boolean;
+  run?: ActiveRun;
+  status?: RunStatus;
+  done?: boolean;
+  exitCode?: number | null;
+  reportName?: string | null;
+}
+
 const ScriptWorkspaceContext = createContext<ScriptWorkspaceValue | null>(null);
 
 function updateSession(
@@ -88,6 +98,7 @@ export function ScriptWorkspaceProvider({
   const [runnerCapacity, setRunnerCapacity] = useState(1);
   const [globalRuns, setGlobalRuns] = useState<ActiveRun[]>([]);
   const abortRefs = useRef<Record<string, AbortController>>({});
+  const outputAbortRefs = useRef<Record<string, AbortController>>({});
   const optimisticRunsRef = useRef<Record<string, ActiveRun>>({});
   const completedRunIdsRef = useRef<Set<string>>(new Set());
   const visibleRunsRef = useRef<ActiveRun[]>([]);
@@ -145,6 +156,65 @@ export function ScriptWorkspaceProvider({
     [applyVisibleRuns]
   );
 
+  const applyRunStreamMessage = useCallback(
+    (
+      key: string,
+      msg: RunStreamMessage,
+      options: {
+        removeOptimisticOnDone?: boolean;
+        trackStartedRun?: boolean;
+      } = {}
+    ) => {
+      if (msg.started && msg.run) {
+        setSessions((s) =>
+          updateSession(s, key, {
+            lines: [],
+            isRunning: true,
+            lastExitCode: null,
+            lastReportName: null,
+          })
+        );
+
+        if (options.trackStartedRun) {
+          completedRunIdsRef.current.delete(msg.run.id);
+          optimisticRunsRef.current[key] = msg.run;
+          if (msg.status) {
+            applyRunStatus(msg.status);
+          } else {
+            applyVisibleRuns(
+              mergeActiveRuns(visibleRunsRef.current, [msg.run]),
+              runnerCapacityRef.current
+            );
+          }
+        }
+      }
+
+      if (msg.line !== undefined) {
+        setSessions((s) => {
+          const current = s[key] ?? EMPTY_SESSION;
+          return updateSession(s, key, {
+            lines: [...current.lines, msg.line!],
+            isRunning: true,
+          });
+        });
+      }
+
+      if (msg.done) {
+        if (options.removeOptimisticOnDone) {
+          removeOptimisticRun(key, true);
+        }
+        setSessions((s) =>
+          updateSession(s, key, {
+            isRunning: false,
+            lastExitCode: msg.exitCode ?? null,
+            lastReportName: msg.reportName ?? null,
+          })
+        );
+      }
+    },
+    [applyRunStatus, applyVisibleRuns, removeOptimisticRun]
+  );
+
   // Poll /api/run/status to get authoritative run state (works across tabs/users)
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +245,67 @@ export function ScriptWorkspaceProvider({
       sessions[sessionKey(namespace, filename)] ?? EMPTY_SESSION,
     [namespace, sessions]
   );
+
+  useEffect(() => {
+    const selectedRun =
+      selectedFile === null
+        ? undefined
+        : globalRuns.find(
+            (run) => run.namespace === namespace && run.script === selectedFile
+          );
+    const selectedRunId = selectedRun?.id ?? null;
+
+    for (const [runId, controller] of Object.entries(outputAbortRefs.current)) {
+      if (runId !== selectedRunId) {
+        controller.abort();
+        delete outputAbortRefs.current[runId];
+      }
+    }
+
+    if (!selectedRun) return;
+
+    const key = sessionKey(selectedRun.namespace, selectedRun.script);
+    if (abortRefs.current[key] || outputAbortRefs.current[selectedRun.id]) {
+      return;
+    }
+
+    const controller = new AbortController();
+    outputAbortRefs.current[selectedRun.id] = controller;
+    setSessions((s) =>
+      updateSession(s, key, {
+        lines: [],
+        isRunning: true,
+        lastExitCode: null,
+        lastReportName: null,
+      })
+    );
+
+    void readRunOutputStream({
+      run: selectedRun,
+      signal: controller.signal,
+      onMessage: (message) => applyRunStreamMessage(key, message),
+      onError: () => {
+        setSessions((s) => {
+          const current = s[key] ?? EMPTY_SESSION;
+          return updateSession(s, key, {
+            lines: [...current.lines, "[error] could not load live output"],
+          });
+        });
+      },
+      onFinish: () => {
+        delete outputAbortRefs.current[selectedRun.id];
+      },
+    });
+  }, [applyRunStreamMessage, globalRuns, namespace, selectedFile]);
+
+  useEffect(() => {
+    return () => {
+      for (const controller of Object.values(outputAbortRefs.current)) {
+        controller.abort();
+      }
+      outputAbortRefs.current = {};
+    };
+  }, []);
 
   const runScript = useCallback(async (filename: string) => {
     const key = sessionKey(namespace, filename);
@@ -252,45 +383,13 @@ export function ScriptWorkspaceProvider({
           const dataLine = part.replace(/^data: /, "").trim();
           if (!dataLine) continue;
           try {
-            const msg = JSON.parse(dataLine) as {
-              line?: string;
-              started?: boolean;
-              run?: ActiveRun;
-              status?: RunStatus;
-              done?: boolean;
-              exitCode?: number;
-              reportName?: string;
-            };
-            if (msg.started && msg.run) {
-              completedRunIdsRef.current.delete(msg.run.id);
-              optimisticRunsRef.current[key] = msg.run;
-              if (msg.status) {
-                applyRunStatus(msg.status);
-              } else {
-                applyVisibleRuns(
-                  mergeActiveRuns(visibleRunsRef.current, [msg.run]),
-                  runnerCapacityRef.current
-                );
-              }
-            }
-            if (msg.line !== undefined) {
-              setSessions((s) => {
-                const current = s[key] ?? EMPTY_SESSION;
-                return updateSession(s, key, {
-                  lines: [...current.lines, msg.line!],
-                });
-              });
-            }
+            const msg = JSON.parse(dataLine) as RunStreamMessage;
+            applyRunStreamMessage(key, msg, {
+              removeOptimisticOnDone: true,
+              trackStartedRun: true,
+            });
             if (msg.done) {
               completed = true;
-              removeOptimisticRun(key, true);
-              setSessions((s) =>
-                updateSession(s, key, {
-                  isRunning: false,
-                  lastExitCode: msg.exitCode ?? null,
-                  lastReportName: msg.reportName ?? null,
-                })
-              );
               setRunningScript(null);
               delete abortRefs.current[key];
             }
@@ -311,8 +410,7 @@ export function ScriptWorkspaceProvider({
     }
   }, [
     namespace,
-    applyRunStatus,
-    applyVisibleRuns,
+    applyRunStreamMessage,
     removeOptimisticRun,
   ]);
 
@@ -441,6 +539,55 @@ function mergeActiveRuns(...runGroups: ActiveRun[][]): ActiveRun[] {
   }
 
   return orderActiveRuns(Array.from(runsById.values()));
+}
+
+async function readRunOutputStream({
+  run,
+  signal,
+  onMessage,
+  onError,
+  onFinish,
+}: {
+  run: ActiveRun;
+  signal: AbortSignal;
+  onMessage: (message: RunStreamMessage) => void;
+  onError: () => void;
+  onFinish: () => void;
+}) {
+  try {
+    const response = await fetch(
+      withBasePath(`/api/run/output/${encodeURIComponent(run.id)}`),
+      { signal }
+    );
+    const reader = response.body?.getReader();
+    if (!response.ok || !reader) {
+      throw new Error("live output stream unavailable");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const dataLine = part.replace(/^data: /, "").trim();
+        if (!dataLine) continue;
+        try {
+          onMessage(JSON.parse(dataLine) as RunStreamMessage);
+        } catch {
+          // Ignore malformed SSE frames from a transient stream.
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    onError();
+  } finally {
+    onFinish();
+  }
 }
 
 async function readRunFailure(response: Response): Promise<string> {

@@ -326,6 +326,97 @@ describe("ScriptWorkspaceContext", () => {
     });
   });
 
+  it("loads live output for the selected running script from another tab", async () => {
+    let finishOutput!: () => void;
+    const replay = 'data: {"line":"remote output"}\n\n';
+    const done =
+      'data: {"done":true,"exitCode":0,"reportName":"a.js-1.html"}\n\n';
+
+    global.fetch = jest.fn((url: string) => {
+      if (url === "/k6/api/run/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: true,
+            namespace: "team-a",
+            script: "a.js",
+            activeRunners: 1,
+            capacity: 1,
+            runs: [
+              {
+                id: "run_1",
+                namespace: "team-a",
+                script: "a.js",
+                startedAt: 1,
+                runnerIndex: 0,
+                dashboardPort: 5665,
+              },
+            ],
+            startedAt: 1,
+          }),
+        });
+      }
+      if (url === "/k6/api/run/output/run_1") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => {
+              let step = 0;
+              return {
+                read: () => {
+                  if (step === 0) {
+                    step += 1;
+                    return Promise.resolve({
+                      done: false,
+                      value: Buffer.from(replay, "utf-8"),
+                    });
+                  }
+                  if (step === 1) {
+                    step += 1;
+                    return new Promise((resolve) => {
+                      finishOutput = () =>
+                        resolve({
+                          done: false,
+                          value: Buffer.from(done, "utf-8"),
+                        });
+                    });
+                  }
+                  return Promise.resolve({ done: true, value: undefined });
+                },
+              };
+            },
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) =>
+        wrapper({ children, namespace: "team-a", selectedFile: "a.js" }),
+    });
+
+    await waitFor(() => {
+      expect(result.current.getSession("a.js")).toMatchObject({
+        isRunning: true,
+        lines: ["remote output"],
+      });
+    });
+
+    await act(async () => {
+      finishOutput();
+    });
+
+    await waitFor(() => {
+      expect(result.current.getSession("a.js")).toMatchObject({
+        isRunning: false,
+        lastExitCode: 0,
+        lastReportName: "a.js-1.html",
+      });
+    });
+  });
+
   it("keeps same filename sessions isolated by namespace", async () => {
     let setNamespace: ((namespace: string) => void) | null = null;
 

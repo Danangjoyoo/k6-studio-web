@@ -21,6 +21,11 @@ import {
   normalizeNamespace,
   toNamespacedKey,
 } from "@/lib/namespaces";
+import {
+  appendRunOutput,
+  closeRunOutput,
+  type RunOutputMessage,
+} from "@/lib/run-output";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +58,7 @@ export async function POST(request: Request) {
       { status: 409 }
     );
   }
+  const run = activeRun;
 
   try {
     await ensureBuckets();
@@ -77,7 +83,7 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const abortController = new AbortController();
     let cancelled = false;
-    registerCancelHandler(activeRun.id, () => {
+    registerCancelHandler(run.id, () => {
       cancelled = true;
       abortController.abort();
     });
@@ -85,7 +91,8 @@ export async function POST(request: Request) {
 
     const readable = new ReadableStream({
       async start(controller) {
-        function send(obj: Record<string, unknown>) {
+        function send(obj: RunOutputMessage) {
+          appendRunOutput(run.id, obj);
           try {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)
@@ -98,11 +105,11 @@ export async function POST(request: Request) {
         try {
           send({
             started: true,
-            run: activeRun,
+            run,
             status: getStatus(),
           });
           send({
-            line: `[starting] k6 run for ${namespace}/${filename} on dashboard port ${activeRun.dashboardPort}`,
+            line: `[starting] k6 run for ${namespace}/${filename} on dashboard port ${run.dashboardPort}`,
           });
 
           const exitCode = await runK6(
@@ -110,7 +117,7 @@ export async function POST(request: Request) {
             reportPath,
             (line) => send({ line }),
             abortController.signal,
-            activeRun.dashboardPort
+            run.dashboardPort
           );
 
           if (cancelled) {
@@ -157,8 +164,9 @@ export async function POST(request: Request) {
         } finally {
           // Wait for the dashboard port to be released before unlocking so the
           // next run never races the kernel socket (bug H2).
-          await waitForPortFree(activeRun.dashboardPort, 5000);
-          release(activeRun.id);
+          await waitForPortFree(run.dashboardPort, 5000);
+          release(run.id);
+          closeRunOutput(run.id);
           try {
             controller.close();
           } catch {
@@ -179,7 +187,8 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    release(activeRun.id);
+    release(run.id);
+    closeRunOutput(run.id);
     throw error;
   }
 }
