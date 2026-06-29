@@ -111,6 +111,40 @@ describe("TestHistoryReportPreview", () => {
     expect(screen.queryByLabelText("Markdown note")).not.toBeInTheDocument();
   });
 
+  it("supports controlled active report tab state", async () => {
+    const onActiveTabChange = jest.fn();
+    mockNotes([
+      {
+        id: "note_1",
+        title: "Findings",
+        markdown: "# Persisted finding",
+      },
+    ]);
+
+    render(
+      <TestHistoryReportPreview
+        namespace="team-a"
+        reportName="smoke.ts-1.html"
+        activeTabId="note_1"
+        onActiveTabChange={onActiveTabChange}
+      />
+    );
+
+    expect(await screen.findByRole("tab", { name: "Findings" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(
+      screen.getByRole("heading", { name: "Persisted finding" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Summary" }));
+    expect(onActiveTabChange).toHaveBeenCalledWith("summary");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Findings" }));
+    expect(onActiveTabChange).toHaveBeenCalledWith("note_1");
+  });
+
   it("places the add button after summary and note tabs", async () => {
     mockNotes([
       {

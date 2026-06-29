@@ -13,6 +13,8 @@ import { withBasePath } from "@/lib/base-path";
 interface TestHistoryReportPreviewProps {
   namespace: string;
   reportName: string | null;
+  activeTabId?: string;
+  onActiveTabChange?: (tabId: string) => void;
 }
 
 type NoteTab = ReportNote & {
@@ -31,13 +33,23 @@ const NOTE_PRIMARY_ACTION_CLASS =
 export default function TestHistoryReportPreview({
   namespace,
   reportName,
+  activeTabId: controlledActiveTabId,
+  onActiveTabChange,
 }: TestHistoryReportPreviewProps) {
   const [notes, setNotes] = useState<NoteTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState(SUMMARY_TAB_ID);
+  const [internalActiveTabId, setInternalActiveTabId] = useState(SUMMARY_TAB_ID);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const requestIdRef = useRef(0);
+  const activeTabId = controlledActiveTabId ?? internalActiveTabId;
+
+  function setActiveTabId(tabId: string) {
+    if (controlledActiveTabId === undefined) {
+      setInternalActiveTabId(tabId);
+    }
+    onActiveTabChange?.(tabId);
+  }
 
   useEffect(() => {
     if (!reportName) return;
@@ -46,7 +58,7 @@ export default function TestHistoryReportPreview({
     setLoadingNotes(true);
     setSaveError(null);
     setNotes([]);
-    setActiveTabId(SUMMARY_TAB_ID);
+    setInternalActiveTabId(SUMMARY_TAB_ID);
     setEditingNoteId(null);
 
     fetch(reportNotesApiUrl(reportName, namespace))

@@ -107,6 +107,38 @@ describe("AppHeader", () => {
     expect(screen.getByText("default/smoke.ts")).toBeInTheDocument();
   });
 
+  it("notifies when an active running script is selected", () => {
+    const onActiveRunSelect = jest.fn();
+    const activeRun = {
+      id: "run_1",
+      namespace: "team-a",
+      script: "folder/deeply/nested/load-test-script.ts",
+      startedAt: 1,
+      runnerIndex: 0,
+      dashboardPort: 5665,
+    };
+
+    render(
+      <AppHeader
+        namespace="team-a"
+        onNamespaceChange={jest.fn()}
+        activeRunners={1}
+        runnerCapacity={2}
+        activeRuns={[activeRun]}
+        onActiveRunSelect={onActiveRunSelect}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Active runner: 1/2" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open running script team-a/folder/deeply/nested/load-test-script.ts",
+      })
+    );
+
+    expect(onActiveRunSelect).toHaveBeenCalledWith(activeRun);
+  });
+
   it("makes the active runner label visibly interactive on hover", () => {
     render(
       <AppHeader

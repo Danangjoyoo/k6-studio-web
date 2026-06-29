@@ -45,6 +45,13 @@ describe("TestHistoryTab", () => {
     (global.fetch as jest.Mock).mockClear();
   });
 
+  afterEach(async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
   it("shows select-script empty state when no script selected", () => {
     render(<TestHistoryTab namespace="default" scriptName={null} />);
     expect(screen.getByText(/select a script/i)).toBeInTheDocument();
@@ -78,6 +85,40 @@ describe("TestHistoryTab", () => {
     expect(screen.getByTitle("smoke.js-1719200000000.html")).toHaveAttribute(
       "src",
       "/k6/api/reports/smoke.js-1719200000000.html?namespace=team-a"
+    );
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/k6/api/reports/smoke.js-1719200000000.html/notes?namespace=team-a"
+      );
+    });
+  });
+
+  it("supports controlled selected report state", async () => {
+    const onSelectedReportChange = jest.fn();
+
+    render(
+      <TestHistoryTab
+        namespace="team-a"
+        scriptName="smoke.js"
+        selectedReportName="smoke.js-1719200000000.html"
+        onSelectedReportChange={onSelectedReportChange}
+      />
+    );
+
+    await screen.findByText("smoke.js-1719200000000.html");
+    expect(await screen.findByTitle("smoke.js-1719200000000.html")).toHaveAttribute(
+      "src",
+      "/k6/api/reports/smoke.js-1719200000000.html?namespace=team-a"
+    );
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/k6/api/reports/smoke.js-1719200000000.html/notes?namespace=team-a"
+      );
+    });
+
+    fireEvent.click(screen.getByText("smoke.js-1719200000000.html"));
+    expect(onSelectedReportChange).toHaveBeenCalledWith(
+      "smoke.js-1719200000000.html"
     );
   });
 

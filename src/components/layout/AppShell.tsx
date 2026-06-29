@@ -17,21 +17,42 @@ import FileExplorer from "@/components/file-explorer/FileExplorer";
 import EditorTab from "@/components/tabs/EditorTab";
 import LiveDashboardTab from "@/components/tabs/LiveDashboardTab";
 import TestHistoryTab from "@/components/tabs/TestHistoryTab";
+import type { ActiveRun } from "@/lib/run-lock";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
+import {
+  SUMMARY_REPORT_TAB_ID,
+  buildNavigationSearch,
+  parseNavigationState,
+  type MainView,
+} from "@/lib/navigation-state";
 import { cn } from "@/lib/utils";
 
 type PathOperationType = "file" | "folder";
 
 function WorkspaceContent({
+  activeView,
   selectedFile,
+  selectedReport,
+  activeReportTab,
+  onActiveViewChange,
   onSelectFile,
+  onSelectedReportChange,
+  onActiveReportTabChange,
   onSelectNamespace,
+  onSelectActiveRun,
   onFileDeleted,
   onFileRenamed,
 }: {
+  activeView: MainView;
   selectedFile: string | null;
+  selectedReport: string | null;
+  activeReportTab: string;
+  onActiveViewChange: (view: MainView) => void;
   onSelectFile: (name: string) => void;
+  onSelectedReportChange: (reportName: string | null) => void;
+  onActiveReportTabChange: (tabId: string) => void;
   onSelectNamespace: (namespace: string) => void;
+  onSelectActiveRun: (run: ActiveRun) => void;
   onFileDeleted: (name: string) => void;
   onFileRenamed: (
     oldPath: string,
@@ -65,6 +86,7 @@ function WorkspaceContent({
         activeRunners={activeRunners}
         runnerCapacity={runnerCapacity}
         activeRuns={activeRuns}
+        onActiveRunSelect={onSelectActiveRun}
       />
 
       <ResizablePanelGroup
@@ -100,7 +122,15 @@ function WorkspaceContent({
                 </span>
               </div>
             )}
-            <Tabs defaultValue="editor" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <Tabs
+              value={activeView}
+              onValueChange={(value) => {
+                if (isMainView(value)) {
+                  onActiveViewChange(value);
+                }
+              }}
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
               <TabsList className="h-10 shrink-0 justify-start gap-0 rounded-none border-b border-border bg-panel px-2">
                 <TabsTrigger
                   value="editor"
@@ -157,7 +187,14 @@ function WorkspaceContent({
                 value="test-history"
                 className="mt-0 h-full min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
               >
-                <TestHistoryTab namespace={namespace} scriptName={selectedFile} />
+                <TestHistoryTab
+                  namespace={namespace}
+                  scriptName={selectedFile}
+                  selectedReportName={selectedReport}
+                  activeReportTabId={activeReportTab}
+                  onSelectedReportChange={onSelectedReportChange}
+                  onActiveReportTabChange={onActiveReportTabChange}
+                />
               </TabsContent>
             </Tabs>
           </main>
@@ -170,13 +207,19 @@ function WorkspaceContent({
 export default function AppShell() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedNamespace, setSelectedNamespace] = useState(DEFAULT_NAMESPACE);
+  const [activeView, setActiveView] = useState<MainView>("editor");
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
+  const [activeReportTab, setActiveReportTab] = useState(SUMMARY_REPORT_TAB_ID);
   const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
+    const routeState = parseNavigationState(window.location.search);
     const stored = window.localStorage.getItem("k6-studio-namespace");
-    if (stored) {
-      setSelectedNamespace(stored);
-    }
+    setSelectedNamespace(routeState.namespace ?? stored ?? DEFAULT_NAMESPACE);
+    setSelectedFile(routeState.script);
+    setActiveView(routeState.view);
+    setSelectedReport(routeState.report);
+    setActiveReportTab(routeState.reportTab);
     setHasMounted(true);
   }, []);
 
@@ -185,13 +228,63 @@ export default function AppShell() {
     window.localStorage.setItem("k6-studio-namespace", selectedNamespace);
   }, [hasMounted, selectedNamespace]);
 
+  useEffect(() => {
+    if (!hasMounted) return;
+
+    const nextSearch = buildNavigationSearch({
+      namespace: selectedNamespace,
+      view: activeView,
+      script: selectedFile,
+      report: selectedReport,
+      reportTab: activeReportTab,
+    });
+    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [
+    activeReportTab,
+    activeView,
+    hasMounted,
+    selectedFile,
+    selectedNamespace,
+    selectedReport,
+  ]);
+
   const handleNamespaceChange = useCallback((namespace: string) => {
     setSelectedNamespace(namespace);
     setSelectedFile(null);
+    setSelectedReport(null);
+    setActiveReportTab(SUMMARY_REPORT_TAB_ID);
+  }, []);
+
+  const handleSelectFile = useCallback((name: string) => {
+    setSelectedFile(name);
+    setSelectedReport(null);
+    setActiveReportTab(SUMMARY_REPORT_TAB_ID);
+  }, []);
+
+  const handleSelectedReportChange = useCallback((reportName: string | null) => {
+    setSelectedReport(reportName);
+    setActiveReportTab(SUMMARY_REPORT_TAB_ID);
+  }, []);
+
+  const handleSelectActiveRun = useCallback((run: ActiveRun) => {
+    setSelectedNamespace(run.namespace);
+    setSelectedFile(run.script);
+    setSelectedReport(null);
+    setActiveReportTab(SUMMARY_REPORT_TAB_ID);
+    setActiveView("editor");
   }, []);
 
   function handleFileDeleted(name: string) {
-    setSelectedFile((current) => (current === name ? null : current));
+    setSelectedFile((current) => {
+      if (current !== name) return current;
+      setSelectedReport(null);
+      setActiveReportTab(SUMMARY_REPORT_TAB_ID);
+      return null;
+    });
   }
 
   function handleFileRenamed(
@@ -199,9 +292,15 @@ export default function AppShell() {
     newPath: string,
     type: PathOperationType = "file"
   ) {
-    setSelectedFile((current) =>
-      mapSelectedPathAfterOperation(current, oldPath, newPath, type)
-    );
+    setSelectedFile((current) => {
+      const next = mapSelectedPathAfterOperation(current, oldPath, newPath, type);
+      if (next !== current) {
+        setSelectedReport((report) =>
+          mapReportNameAfterOperation(report, oldPath, newPath, type)
+        );
+      }
+      return next;
+    });
   }
 
   return (
@@ -209,17 +308,32 @@ export default function AppShell() {
       <ScriptWorkspaceProvider
         namespace={selectedNamespace}
         selectedFile={selectedFile}
-        onSelectFile={setSelectedFile}
+        onSelectFile={handleSelectFile}
       >
         <WorkspaceContent
+          activeView={activeView}
           selectedFile={selectedFile}
-          onSelectFile={setSelectedFile}
+          selectedReport={selectedReport}
+          activeReportTab={activeReportTab}
+          onActiveViewChange={setActiveView}
+          onSelectFile={handleSelectFile}
+          onSelectedReportChange={handleSelectedReportChange}
+          onActiveReportTabChange={setActiveReportTab}
           onSelectNamespace={handleNamespaceChange}
+          onSelectActiveRun={handleSelectActiveRun}
           onFileDeleted={handleFileDeleted}
           onFileRenamed={handleFileRenamed}
         />
       </ScriptWorkspaceProvider>
     </div>
+  );
+}
+
+function isMainView(value: string): value is MainView {
+  return (
+    value === "editor" ||
+    value === "live-dashboard" ||
+    value === "test-history"
   );
 }
 
@@ -241,6 +355,31 @@ function mapSelectedPathAfterOperation(
   if (!current.startsWith(oldPrefix)) return current;
 
   return joinPath(newFolder, current.slice(oldPrefix.length));
+}
+
+function mapReportNameAfterOperation(
+  current: string | null,
+  oldPath: string,
+  newPath: string,
+  type: PathOperationType
+): string | null {
+  if (!current) return current;
+
+  const oldScript =
+    type === "file" ? oldPath : normalizeFolderPath(oldPath);
+  const newScript =
+    type === "file" ? newPath : normalizeFolderPath(newPath);
+
+  if (type === "file") {
+    const prefix = `${oldScript}-`;
+    return current.startsWith(prefix)
+      ? `${newScript}-${current.slice(prefix.length)}`
+      : current;
+  }
+
+  const oldPrefix = `${oldScript}/`;
+  if (!current.startsWith(oldPrefix)) return current;
+  return joinPath(newScript, current.slice(oldPrefix.length));
 }
 
 function normalizeFolderPath(path: string): string {

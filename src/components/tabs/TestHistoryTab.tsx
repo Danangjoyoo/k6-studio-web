@@ -20,6 +20,10 @@ interface ReportInfo {
 export interface TestHistoryTabProps {
   namespace?: string;
   scriptName: string | null;
+  selectedReportName?: string | null;
+  activeReportTabId?: string;
+  onSelectedReportChange?: (reportName: string | null) => void;
+  onActiveReportTabChange?: (tabId: string) => void;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -42,15 +46,32 @@ function formatSize(bytes: number): string {
 export default function TestHistoryTab({
   namespace = DEFAULT_NAMESPACE,
   scriptName,
+  selectedReportName,
+  activeReportTabId,
+  onSelectedReportChange,
+  onActiveReportTabChange,
 }: TestHistoryTabProps) {
   const [reports, setReports] = useState<ReportInfo[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [internalSelected, setInternalSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [reportsLoaded, setReportsLoaded] = useState(false);
   const fetchReportsRequestIdRef = useRef(0);
+  const selected = selectedReportName ?? internalSelected;
+
+  const setSelected = useCallback(
+    (reportName: string | null) => {
+      if (selectedReportName === undefined) {
+        setInternalSelected(reportName);
+      }
+      onSelectedReportChange?.(reportName);
+    },
+    [onSelectedReportChange, selectedReportName]
+  );
 
   const fetchReports = useCallback(async () => {
     const requestId = ++fetchReportsRequestIdRef.current;
     setLoading(true);
+    setReportsLoaded(false);
     try {
       const res = await fetch(
         withBasePath(`/api/reports?${namespaceQuery(namespace)}`)
@@ -64,6 +85,7 @@ export default function TestHistoryTab({
             new Date(a.lastModified).getTime()
         )
       );
+      setReportsLoaded(true);
     } finally {
       if (requestId === fetchReportsRequestIdRef.current) {
         setLoading(false);
@@ -72,8 +94,14 @@ export default function TestHistoryTab({
   }, [namespace]);
 
   useEffect(() => {
+    if (!scriptName) {
+      setReports([]);
+      setReportsLoaded(false);
+      setLoading(false);
+      return;
+    }
     void fetchReports();
-  }, [fetchReports]);
+  }, [fetchReports, scriptName]);
 
   const filteredReports = useMemo(() => {
     if (!scriptName) return [];
@@ -81,10 +109,22 @@ export default function TestHistoryTab({
   }, [reports, scriptName]);
 
   useEffect(() => {
-    setSelected((current) =>
-      current && filteredReports.some((r) => r.name === current) ? current : null
-    );
-  }, [filteredReports, namespace, scriptName]);
+    if (!reportsLoaded) return;
+    const nextSelected =
+      selected && filteredReports.some((r) => r.name === selected)
+        ? selected
+        : null;
+    if (nextSelected !== selected) {
+      setSelected(nextSelected);
+    }
+  }, [
+    filteredReports,
+    reportsLoaded,
+    namespace,
+    scriptName,
+    selected,
+    setSelected,
+  ]);
 
   if (!scriptName) {
     return (
@@ -171,7 +211,12 @@ export default function TestHistoryTab({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col bg-panel">
-        <TestHistoryReportPreview namespace={namespace} reportName={selected} />
+        <TestHistoryReportPreview
+          namespace={namespace}
+          reportName={selected}
+          activeTabId={activeReportTabId}
+          onActiveTabChange={onActiveReportTabChange}
+        />
       </div>
     </div>
   );

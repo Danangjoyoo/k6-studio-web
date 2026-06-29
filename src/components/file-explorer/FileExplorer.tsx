@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileCode2, Search } from "lucide-react";
+import { Check, FileCode2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import EmptyState from "@/components/layout/EmptyState";
@@ -13,6 +13,7 @@ import NewFolderDialog from "./NewFolderDialog";
 import type { FileNode } from "@/lib/files-tree";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
 import { withBasePath } from "@/lib/base-path";
+import { cn } from "@/lib/utils";
 
 export interface FileExplorerProps {
   namespace?: string;
@@ -299,10 +300,22 @@ export default function FileExplorer({
   function selectVisibleRange(item: MoveSelection) {
     if (isMovementDisabled(item, activeRunningScripts)) return;
     const itemKey = selectionKey(item);
+    const shouldToggleSingleItem = lastSelectionKey === itemKey;
     const startKey = lastSelectionKey ?? itemKey;
     const startIndex = visibleMoveRows.findIndex((row) => row.key === startKey);
     const endIndex = visibleMoveRows.findIndex((row) => row.key === itemKey);
     if (endIndex === -1) {
+      return;
+    }
+    if (shouldToggleSingleItem) {
+      setMoveStatus(null);
+      setLastSelectionKey(itemKey);
+      setSelection((current) => {
+        const next = { ...current };
+        if (next[itemKey]) delete next[itemKey];
+        else next[itemKey] = item;
+        return next;
+      });
       return;
     }
     if (startIndex === -1) {
@@ -540,6 +553,51 @@ export default function FileExplorer({
     [filteredTree, expandedFolders, activeRunningScripts]
   );
   const showSelectionControls = Object.keys(selection).length > 0;
+  const visibleSelectableRows = useMemo(
+    () => visibleMoveRows.filter((row) => !row.disabled),
+    [visibleMoveRows]
+  );
+  const selectedVisibleCount = visibleSelectableRows.filter(
+    (row) => selection[row.key]
+  ).length;
+  const allVisibleSelected =
+    visibleSelectableRows.length > 0 &&
+    selectedVisibleCount === visibleSelectableRows.length;
+  const hasPartialVisibleSelection =
+    selectedVisibleCount > 0 && !allVisibleSelected;
+  const showBulkSelectionControl =
+    selectionRevealKeyHeld || showSelectionControls;
+  const bulkSelectionState = allVisibleSelected
+    ? "all"
+    : hasPartialVisibleSelection
+      ? "partial"
+      : "none";
+  const bulkSelectionAriaChecked = allVisibleSelected
+    ? true
+    : hasPartialVisibleSelection
+      ? "mixed"
+      : false;
+
+  function toggleVisibleSelection() {
+    if (visibleSelectableRows.length === 0) return;
+
+    setMoveStatus(null);
+    setLastSelectionKey(
+      visibleSelectableRows[visibleSelectableRows.length - 1]?.key ?? null
+    );
+    setSelection((current) => {
+      const allSelected = visibleSelectableRows.every((row) => current[row.key]);
+      const next = { ...current };
+      for (const row of visibleSelectableRows) {
+        if (allSelected) {
+          delete next[row.key];
+        } else {
+          next[row.key] = { path: row.path, type: row.type };
+        }
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     setSelection((current) => {
@@ -574,7 +632,7 @@ export default function FileExplorer({
         }
         className="load-lab-grid"
         actions={
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <NewFileDialog
               open={scriptDialogOpen}
               onOpenChange={handleScriptDialogOpenChange}
@@ -606,6 +664,34 @@ export default function FileExplorer({
             className="h-7 w-full rounded-md bg-panel pl-7 pr-2 font-mono text-xs"
           />
         </label>
+        {showBulkSelectionControl && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-label="Check all"
+            aria-checked={bulkSelectionAriaChecked}
+            disabled={visibleSelectableRows.length === 0}
+            onClick={toggleVisibleSelection}
+            className="mt-2 flex h-6 w-full items-center gap-2 rounded border border-border bg-panel px-2 font-mono text-[11px] text-muted-foreground transition-colors hover:border-primary/50 hover:bg-panel-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span
+              data-testid="bulk-selection-indicator"
+              data-state={bulkSelectionState}
+              className={cn(
+                "flex h-3.5 w-3.5 shrink-0 items-center justify-center border transition-colors",
+                bulkSelectionState === "partial" &&
+                  "rounded-full border-primary bg-primary",
+                bulkSelectionState === "all" &&
+                  "rounded-[3px] border-primary bg-primary text-primary-foreground",
+                bulkSelectionState === "none" &&
+                  "rounded-[3px] border-border bg-background"
+              )}
+            >
+              {bulkSelectionState === "all" && <Check className="h-3 w-3" />}
+            </span>
+            <span>Check all</span>
+          </button>
+        )}
         {moveStatus && (
           <p
             role="status"

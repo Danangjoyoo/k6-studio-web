@@ -1,9 +1,13 @@
 import { EventEmitter } from "events";
-import { GET, POST } from "@/app/api/namespaces/route";
+import { DELETE, GET, POST } from "@/app/api/namespaces/route";
 import { SCRIPTS_BUCKET } from "@/lib/minio";
 
 const mockEnsureBuckets = jest.fn();
-const mockClient = { listObjects: jest.fn(), putObject: jest.fn() };
+const mockClient = {
+  listObjects: jest.fn(),
+  putObject: jest.fn(),
+  removeObject: jest.fn(),
+};
 
 jest.mock("@/lib/minio", () => ({
   getMinioClient: () => mockClient,
@@ -25,6 +29,7 @@ describe("/api/namespaces", () => {
     mockEnsureBuckets.mockReset();
     mockClient.listObjects.mockReset();
     mockClient.putObject.mockReset();
+    mockClient.removeObject.mockReset();
   });
 
   it("lists unique namespaces and includes default", async () => {
@@ -76,5 +81,56 @@ describe("/api/namespaces", () => {
       0,
       { "Content-Type": "application/octet-stream" }
     );
+  });
+
+  it("deletes an empty namespace marker", async () => {
+    mockClient.listObjects.mockImplementation(() =>
+      objectStream(["team-empty/.namespace"])
+    );
+
+    const response = await DELETE(
+      new Request("http://localhost/api/namespaces?namespace=team-empty", {
+        method: "DELETE",
+      })
+    );
+
+    expect(response.status).toBe(204);
+    expect(mockClient.removeObject).toHaveBeenCalledWith(
+      SCRIPTS_BUCKET,
+      "team-empty/.namespace"
+    );
+  });
+
+  it("rejects deleting a namespace when scripts or folders still exist", async () => {
+    mockClient.listObjects.mockImplementation(() =>
+      objectStream(["team-a/.namespace", "team-a/script.ts"])
+    );
+
+    const response = await DELETE(
+      new Request("http://localhost/api/namespaces?namespace=team-a", {
+        method: "DELETE",
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Namespace must be empty before deletion",
+    });
+    expect(mockClient.removeObject).not.toHaveBeenCalled();
+  });
+
+  it("rejects deleting the default namespace", async () => {
+    const response = await DELETE(
+      new Request("http://localhost/api/namespaces?namespace=default", {
+        method: "DELETE",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Default namespace cannot be deleted",
+    });
+    expect(mockClient.listObjects).not.toHaveBeenCalled();
+    expect(mockClient.removeObject).not.toHaveBeenCalled();
   });
 });

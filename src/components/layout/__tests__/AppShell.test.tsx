@@ -35,7 +35,14 @@ let mockLiveDashboardTabProps:
     }
   | undefined;
 let mockTestHistoryTabProps:
-  | { namespace: string; scriptName: string | null }
+  | {
+      namespace: string;
+      scriptName: string | null;
+      selectedReportName?: string | null;
+      activeReportTabId?: string;
+      onSelectedReportChange?: (reportName: string | null) => void;
+      onActiveReportTabChange?: (tabId: string) => void;
+    }
   | undefined;
 let mockWorkspaceState = {
   namespace: "default",
@@ -163,11 +170,15 @@ jest.mock("@/components/layout/AppHeader", () => ({
     onNamespaceChange,
     activeRunners,
     runnerCapacity,
+    activeRuns,
+    onActiveRunSelect,
   }: {
     namespace: string;
     onNamespaceChange: (namespace: string) => void;
     activeRunners?: number;
     runnerCapacity?: number;
+    activeRuns?: typeof mockWorkspaceState.globalRuns;
+    onActiveRunSelect?: (run: typeof mockWorkspaceState.globalRuns[number]) => void;
   }) => (
     <div data-testid="app-header">
       <span data-testid="header-namespace">{namespace}</span>
@@ -177,6 +188,15 @@ jest.mock("@/components/layout/AppHeader", () => ({
       <button type="button" onClick={() => onNamespaceChange("team-a")}>
         switch-team-a
       </button>
+      {activeRuns?.map((run) => (
+        <button
+          key={run.id}
+          type="button"
+          onClick={() => onActiveRunSelect?.(run)}
+        >
+          open-run:{run.namespace}/{run.script}
+        </button>
+      ))}
     </div>
   ),
 }));
@@ -204,9 +224,31 @@ jest.mock("@/components/tabs/LiveDashboardTab", () => ({
 
 jest.mock("@/components/tabs/TestHistoryTab", () => ({
   __esModule: true,
-  default: (props: { namespace: string; scriptName: string | null }) => {
+  default: (props: {
+    namespace: string;
+    scriptName: string | null;
+    selectedReportName?: string | null;
+    activeReportTabId?: string;
+    onSelectedReportChange?: (reportName: string | null) => void;
+    onActiveReportTabChange?: (tabId: string) => void;
+  }) => {
     mockTestHistoryTabProps = props;
-    return <div data-testid="test-history-tab" />;
+    return (
+      <div data-testid="test-history-tab">
+        <button
+          type="button"
+          onClick={() => props.onSelectedReportChange?.("test.js-1.html")}
+        >
+          select-report
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onActiveReportTabChange?.("note_1")}
+        >
+          select-note-tab
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -229,6 +271,7 @@ describe("AppShell", () => {
       runnerCapacity: 1,
       globalRuns: [],
     };
+    window.history.replaceState(null, "", "/k6");
   });
 
   it("renders file explorer and tab navigation", () => {
@@ -272,6 +315,87 @@ describe("AppShell", () => {
     expect(mockWorkspaceProviderProps?.namespace).toBe("team-a");
     expect(mockFileExplorerProps?.namespace).toBe("team-a");
     expect(localStorage.getItem("k6-studio-namespace")).toBe("team-a");
+  });
+
+  it("hydrates shareable route state from the current URL", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/k6?namespace=team-a&view=test-history&script=api%2Fsmoke.ts&report=api%2Fsmoke.ts-1.html&reportTab=note_1"
+    );
+
+    render(<AppShell />);
+
+    await screen.findByText("team-a", {
+      selector: "[data-testid='header-namespace']",
+    });
+    expect(mockWorkspaceProviderProps).toEqual({
+      namespace: "team-a",
+      selectedFile: "api/smoke.ts",
+    });
+    expect(mockTestHistoryTabProps).toMatchObject({
+      namespace: "team-a",
+      scriptName: "api/smoke.ts",
+      selectedReportName: "api/smoke.ts-1.html",
+      activeReportTabId: "note_1",
+    });
+  });
+
+  it("updates the URL when selecting a script and switching main tabs", () => {
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: /select-src-a/i }));
+    expect(window.location.search).toBe(
+      "?namespace=default&view=editor&script=src%2Fa.ts"
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /live dashboard/i }));
+    expect(window.location.search).toBe(
+      "?namespace=default&view=live-dashboard&script=src%2Fa.ts"
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /test history/i }));
+    expect(window.location.search).toBe(
+      "?namespace=default&view=test-history&script=src%2Fa.ts"
+    );
+  });
+
+  it("updates the URL when history report and report tab change", () => {
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("button", { name: /select-test/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /test history/i }));
+    fireEvent.click(screen.getByRole("button", { name: /select-report/i }));
+
+    expect(window.location.search).toBe(
+      "?namespace=default&view=test-history&script=test.js&report=test.js-1.html"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /select-note-tab/i }));
+    expect(window.location.search).toBe(
+      "?namespace=default&view=test-history&script=test.js&report=test.js-1.html&reportTab=note_1"
+    );
+  });
+
+  it("updates namespace in the URL and clears script/report context", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/k6?namespace=default&view=test-history&script=test.js&report=test.js-1.html&reportTab=note_1"
+    );
+
+    render(<AppShell />);
+
+    await screen.findByText("default", {
+      selector: "[data-testid='header-namespace']",
+    });
+    fireEvent.click(screen.getByRole("button", { name: /switch-team-a/i }));
+
+    expect(window.location.search).toBe("?namespace=team-a&view=test-history");
+    expect(mockWorkspaceProviderProps).toEqual({
+      namespace: "team-a",
+      selectedFile: null,
+    });
   });
 
   it("clears selectedFile when the deleted file was selected", () => {
@@ -378,6 +502,44 @@ describe("AppShell", () => {
     });
     expect(screen.getByTestId("header-active-runners")).toHaveTextContent("1/1");
     expect(mockEditorTabProps?.filename).toBe("test.js");
+  });
+
+  it("navigates to a running script from the active runner list", () => {
+    mockWorkspaceState = {
+      namespace: "default",
+      runEpoch: 9,
+      globalRunning: true,
+      globalRunningNamespace: "team-b",
+      globalRunningScript: "api/load.ts",
+      activeRunners: 1,
+      runnerCapacity: 2,
+      globalRuns: [
+        {
+          id: "run_1",
+          namespace: "team-b",
+          script: "api/load.ts",
+          startedAt: 1,
+          runnerIndex: 0,
+          dashboardPort: 5665,
+        },
+      ],
+    };
+
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("tab", { name: /test history/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "open-run:team-b/api/load.ts" })
+    );
+
+    expect(mockWorkspaceProviderProps).toEqual({
+      namespace: "team-b",
+      selectedFile: "api/load.ts",
+    });
+    expect(screen.getByTestId("editor-tab")).toHaveTextContent("api/load.ts");
+    expect(window.location.search).toBe(
+      "?namespace=team-b&view=editor&script=api%2Fload.ts"
+    );
   });
 
   it("maps the current selected file when a file move completes after selection changes", () => {

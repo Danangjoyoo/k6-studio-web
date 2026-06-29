@@ -9,6 +9,7 @@ interface AppHeaderProps {
   activeRunners?: number;
   runnerCapacity?: number;
   activeRuns?: ActiveRun[];
+  onActiveRunSelect?: (run: ActiveRun) => void;
 }
 
 /** Inline k6 wordmark path — matches the official k6 logomark style. */
@@ -46,6 +47,7 @@ export default function AppHeader({
   activeRunners = 0,
   runnerCapacity = 1,
   activeRuns = [],
+  onActiveRunSelect,
 }: AppHeaderProps) {
   const isRunning = activeRunners > 0;
   const [runnerListOpen, setRunnerListOpen] = useState(false);
@@ -110,12 +112,19 @@ export default function AppHeader({
                 {activeRuns.map((run) => {
                   const label = `${run.namespace}/${run.script}`;
                   return (
-                    <li
-                      key={run.id}
-                      title={label}
-                      className="truncate rounded border border-border/70 bg-panel-raised px-2 py-1 font-mono text-xs text-foreground"
-                    >
-                      {label}
+                    <li key={run.id}>
+                      <button
+                        type="button"
+                        title={label}
+                        aria-label={`Open running script ${label}`}
+                        onClick={() => {
+                          onActiveRunSelect?.(run);
+                          setRunnerListOpen(false);
+                        }}
+                        className="block w-full truncate rounded border border-border/70 bg-panel-raised px-2 py-1 text-left font-mono text-xs text-foreground transition-colors hover:border-run/60 hover:bg-run/10 hover:text-run focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-run/40"
+                      >
+                        {label}
+                      </button>
                     </li>
                   );
                 })}

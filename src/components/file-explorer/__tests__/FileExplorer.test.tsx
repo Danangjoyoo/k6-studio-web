@@ -251,6 +251,30 @@ beforeEach(() => {
 });
 
 describe("FileExplorer", () => {
+  it("allows the script header count and create actions to wrap on narrow widths", async () => {
+    mockFilesTree([
+      { path: "script-a.ts", name: "script-a.ts", type: "file" },
+      { path: "script-b.ts", name: "script-b.ts", type: "file" },
+    ]);
+
+    render(
+      <FileExplorer
+        selectedFile={null}
+        onSelectFile={jest.fn()}
+      />
+    );
+
+    const header = screen.getByText("Scripts").closest(".load-lab-grid");
+    expect(header).toHaveClass("flex-wrap", "items-start");
+
+    const actionGroup = screen
+      .getByRole("button", { name: /new script/i })
+      .parentElement;
+    expect(actionGroup).toHaveClass("flex-wrap");
+
+    expect(await screen.findByText("script-a.ts")).toBeInTheDocument();
+  });
+
   it("fetches the initial tree for the selected namespace", async () => {
     mockFilesTree([
       { path: "script.js", name: "script.js", type: "file" },
@@ -416,6 +440,73 @@ describe("FileExplorer", () => {
       expect(otherControl).toHaveAttribute("data-selection-visible", "false");
       expect(scriptControl).toHaveClass("w-0");
       expect(otherControl).toHaveClass("w-0");
+    });
+  });
+
+  it("shift-click toggles the same row selection on and off", async () => {
+    mockFilesTree([
+      { path: "script.ts", name: "script.ts", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    const row = await rowByPath("script.ts");
+    const checkbox = within(row).getByRole("checkbox", {
+      name: "Select script.ts",
+    });
+    const control = within(row).getByTestId("row-selection-control");
+
+    fireEvent.click(row, { shiftKey: true });
+    expect(checkbox).toBeChecked();
+    expect(control).toHaveAttribute("data-selection-visible", "true");
+
+    fireEvent.click(row, { shiftKey: true });
+    expect(checkbox).not.toBeChecked();
+    expect(control).toHaveAttribute("data-selection-visible", "false");
+  });
+
+  it("shows a check-all control while selection controls are visible", async () => {
+    mockFilesTree([
+      { path: "script.ts", name: "script.ts", type: "file" },
+      { path: "other.ts", name: "other.ts", type: "file" },
+    ]);
+
+    render(<FileExplorer selectedFile={null} onSelectFile={jest.fn()} />);
+
+    await rowByPath("script.ts");
+    expect(
+      screen.queryByRole("checkbox", { name: "Check all" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Shift" });
+
+    const checkAll = await screen.findByRole("checkbox", { name: "Check all" });
+    const indicator = screen.getByTestId("bulk-selection-indicator");
+    expect(checkAll).toHaveAttribute("aria-checked", "false");
+    expect(indicator).toHaveAttribute("data-state", "none");
+
+    fireEvent.click(await rowByPath("script.ts"), { shiftKey: true });
+    expect(checkAll).toHaveAttribute("aria-checked", "mixed");
+    expect(indicator).toHaveAttribute("data-state", "partial");
+    expect(indicator).toHaveClass("rounded-full");
+
+    fireEvent.click(checkAll);
+    expect(checkAll).toHaveAttribute("aria-checked", "true");
+    expect(indicator).toHaveAttribute("data-state", "all");
+    expect(indicator).toHaveClass("rounded-[3px]");
+    expect(screen.getByRole("checkbox", { name: "Select script.ts" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select other.ts" })).toBeChecked();
+
+    fireEvent.click(checkAll);
+    expect(checkAll).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("checkbox", { name: "Select script.ts" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select other.ts" })).not.toBeChecked();
+
+    fireEvent.keyUp(window, { key: "Shift" });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("checkbox", { name: "Check all" })
+      ).not.toBeInTheDocument();
     });
   });
 
