@@ -88,6 +88,62 @@ export function ScriptWorkspaceProvider({
   const [runnerCapacity, setRunnerCapacity] = useState(1);
   const [globalRuns, setGlobalRuns] = useState<ActiveRun[]>([]);
   const abortRefs = useRef<Record<string, AbortController>>({});
+  const optimisticRunsRef = useRef<Record<string, ActiveRun>>({});
+  const completedRunIdsRef = useRef<Set<string>>(new Set());
+  const visibleRunsRef = useRef<ActiveRun[]>([]);
+  const runnerCapacityRef = useRef(1);
+
+  const applyVisibleRuns = useCallback((runs: ActiveRun[], capacity: number) => {
+    const orderedRuns = orderActiveRuns(runs);
+    const oldest = orderedRuns[0] ?? null;
+
+    visibleRunsRef.current = orderedRuns;
+    runnerCapacityRef.current = capacity;
+    setGlobalRunning(orderedRuns.length > 0);
+    setGlobalRunningNamespace(oldest?.namespace ?? null);
+    setGlobalRunningScript(oldest?.script ?? null);
+    setActiveRunners(orderedRuns.length);
+    setRunnerCapacity(capacity);
+    setGlobalRuns(orderedRuns);
+  }, []);
+
+  const applyRunStatus = useCallback(
+    (status: RunStatus) => {
+      const rawServerRuns = status.runs ?? legacyStatusRun(status);
+      const serverRunIds = new Set(rawServerRuns.map((run) => run.id));
+      for (const completedRunId of completedRunIdsRef.current) {
+        if (!serverRunIds.has(completedRunId)) {
+          completedRunIdsRef.current.delete(completedRunId);
+        }
+      }
+
+      const serverRuns = rawServerRuns.filter(
+        (run) => !completedRunIdsRef.current.has(run.id)
+      );
+      applyVisibleRuns(
+        mergeActiveRuns(serverRuns, Object.values(optimisticRunsRef.current)),
+        status.capacity
+      );
+    },
+    [applyVisibleRuns]
+  );
+
+  const removeOptimisticRun = useCallback(
+    (key: string, markCompleted = false) => {
+      const run = optimisticRunsRef.current[key];
+      if (!run) return;
+
+      delete optimisticRunsRef.current[key];
+      if (markCompleted) {
+        completedRunIdsRef.current.add(run.id);
+      }
+      applyVisibleRuns(
+        visibleRunsRef.current.filter((visibleRun) => visibleRun.id !== run.id),
+        runnerCapacityRef.current
+      );
+    },
+    [applyVisibleRuns]
+  );
 
   // Poll /api/run/status to get authoritative run state (works across tabs/users)
   useEffect(() => {
@@ -98,12 +154,7 @@ export function ScriptWorkspaceProvider({
           const res = await fetch(withBasePath("/api/run/status"));
           if (!cancelled && res.ok) {
             const status = (await res.json()) as RunStatus;
-            setGlobalRunning(status.running);
-            setGlobalRunningNamespace(status.namespace ?? null);
-            setGlobalRunningScript(status.script);
-            setActiveRunners(status.activeRunners);
-            setRunnerCapacity(status.capacity);
-            setGlobalRuns(status.runs ?? legacyStatusRun(status));
+            applyRunStatus(status);
           }
         } catch {
           // ignore network errors during polling
@@ -117,7 +168,7 @@ export function ScriptWorkspaceProvider({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyRunStatus]);
 
   const getSession = useCallback(
     (filename: string) =>
@@ -132,6 +183,7 @@ export function ScriptWorkspaceProvider({
     abortRefs.current[key] = controller;
 
     function finishWithError(message: string) {
+      removeOptimisticRun(key);
       setSessions((s) =>
         updateSession(s, key, {
           isRunning: false,
@@ -202,10 +254,25 @@ export function ScriptWorkspaceProvider({
           try {
             const msg = JSON.parse(dataLine) as {
               line?: string;
+              started?: boolean;
+              run?: ActiveRun;
+              status?: RunStatus;
               done?: boolean;
               exitCode?: number;
               reportName?: string;
             };
+            if (msg.started && msg.run) {
+              completedRunIdsRef.current.delete(msg.run.id);
+              optimisticRunsRef.current[key] = msg.run;
+              if (msg.status) {
+                applyRunStatus(msg.status);
+              } else {
+                applyVisibleRuns(
+                  mergeActiveRuns(visibleRunsRef.current, [msg.run]),
+                  runnerCapacityRef.current
+                );
+              }
+            }
             if (msg.line !== undefined) {
               setSessions((s) => {
                 const current = s[key] ?? EMPTY_SESSION;
@@ -216,6 +283,7 @@ export function ScriptWorkspaceProvider({
             }
             if (msg.done) {
               completed = true;
+              removeOptimisticRun(key, true);
               setSessions((s) =>
                 updateSession(s, key, {
                   isRunning: false,
@@ -235,10 +303,18 @@ export function ScriptWorkspaceProvider({
         finishWithError("run stream ended before completion");
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        removeOptimisticRun(key);
+        return;
+      }
       finishWithError(err instanceof Error ? err.message : "run failed");
     }
-  }, [namespace]);
+  }, [
+    namespace,
+    applyRunStatus,
+    applyVisibleRuns,
+    removeOptimisticRun,
+  ]);
 
   const cancelRun = useCallback(
     async (runId: string) => {
@@ -350,6 +426,21 @@ function legacyStatusRun(status: RunStatus): ActiveRun[] {
       dashboardPort: 5665,
     },
   ];
+}
+
+function orderActiveRuns(runs: ActiveRun[]): ActiveRun[] {
+  return [...runs].sort(
+    (a, b) => a.startedAt - b.startedAt || a.runnerIndex - b.runnerIndex
+  );
+}
+
+function mergeActiveRuns(...runGroups: ActiveRun[][]): ActiveRun[] {
+  const runsById = new Map<string, ActiveRun>();
+  for (const run of runGroups.flat()) {
+    runsById.set(run.id, run);
+  }
+
+  return orderActiveRuns(Array.from(runsById.values()));
 }
 
 async function readRunFailure(response: Response): Promise<string> {

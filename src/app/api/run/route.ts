@@ -97,6 +97,11 @@ export async function POST(request: Request) {
 
         try {
           send({
+            started: true,
+            run: activeRun,
+            status: getStatus(),
+          });
+          send({
             line: `[starting] k6 run for ${namespace}/${filename} on dashboard port ${activeRun.dashboardPort}`,
           });
 

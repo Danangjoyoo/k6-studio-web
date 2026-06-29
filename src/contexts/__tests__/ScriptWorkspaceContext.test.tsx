@@ -200,6 +200,91 @@ describe("ScriptWorkspaceContext", () => {
     );
   });
 
+  it("updates active runners from the run stream start event", async () => {
+    let finishStream!: () => void;
+    let runPromise!: Promise<void>;
+    const started =
+      'data: {"started":true,"run":{"id":"run_1","namespace":"team-a","script":"a.js","startedAt":1,"runnerIndex":0,"dashboardPort":5665},"status":{"running":true,"namespace":"team-a","script":"a.js","startedAt":1,"activeRunners":1,"capacity":2,"runs":[{"id":"run_1","namespace":"team-a","script":"a.js","startedAt":1,"runnerIndex":0,"dashboardPort":5665}]}}\n\n';
+    const done =
+      'data: {"done":true,"exitCode":0,"reportName":"a.js-1.html"}\n\n';
+
+    global.fetch = jest.fn((url: string) => {
+      if (url === "/k6/api/run/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: false,
+            namespace: null,
+            script: null,
+            activeRunners: 0,
+            capacity: 2,
+            runs: [],
+            startedAt: null,
+          }),
+        });
+      }
+      if (url === "/k6/api/run") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => {
+              let step = 0;
+              return {
+                read: () => {
+                  if (step === 0) {
+                    step += 1;
+                    return Promise.resolve({
+                      done: false,
+                      value: Buffer.from(started, "utf-8"),
+                    });
+                  }
+                  if (step === 1) {
+                    step += 1;
+                    return new Promise((resolve) => {
+                      finishStream = () =>
+                        resolve({
+                          done: false,
+                          value: Buffer.from(done, "utf-8"),
+                        });
+                    });
+                  }
+                  return Promise.resolve({ done: true, value: undefined });
+                },
+              };
+            },
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => wrapper({ children, namespace: "team-a" }),
+    });
+
+    act(() => {
+      runPromise = result.current.runScript("a.js");
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeRunners).toBe(1);
+      expect(result.current.globalRuns).toEqual([
+        expect.objectContaining({ id: "run_1", script: "a.js" }),
+      ]);
+    });
+
+    await act(async () => {
+      finishStream();
+      await runPromise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeRunners).toBe(0);
+      expect(result.current.globalRuns).toEqual([]);
+    });
+  });
+
   it("exposes the namespace from status polling", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

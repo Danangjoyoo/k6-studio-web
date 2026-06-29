@@ -120,6 +120,9 @@ describe("POST /api/run", () => {
     );
     const text = await readSse(response);
 
+    expect(text).toContain('"started":true');
+    expect(text).toContain('"activeRunners":1');
+    expect(text).toContain('"script":"api/smoke.ts"');
     expect(text).toContain(
       'data: {"line":"[starting] k6 run for team-a/api/smoke.ts on dashboard port 5665"}'
     );
