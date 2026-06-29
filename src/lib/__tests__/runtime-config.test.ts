@@ -46,4 +46,10 @@ describe("runtime configuration", () => {
   it("documents TOTAL_RUNNERS in local env templates", () => {
     expect(readProjectFile(".env.example")).toMatch(/^TOTAL_RUNNERS=1$/m);
   });
+
+  it("does not fetch Google fonts at build time", () => {
+    expect(readProjectFile("src/app/layout.tsx")).not.toContain(
+      "next/font/google"
+    );
+  });
 });

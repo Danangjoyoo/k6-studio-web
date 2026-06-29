@@ -28,7 +28,7 @@ describe("dashboard proxy route", () => {
     });
 
     const response = await GET(
-      new Request("http://localhost/api/dashboard/ui/?runId=run_1")
+      new Request("http://localhost/k6/api/dashboard/ui/?runId=run_1")
     );
 
     expect(response.status).toBe(200);
@@ -45,7 +45,7 @@ describe("dashboard proxy route", () => {
     });
 
     const response = await GET(
-      new Request("http://localhost/api/dashboard/run/run_1/events")
+      new Request("http://localhost/k6/api/dashboard/run/run_1/events")
     );
 
     expect(response.status).toBe(200);
@@ -68,11 +68,11 @@ describe("dashboard proxy route", () => {
     ) as jest.Mock;
 
     const response = await GET(
-      new Request("http://localhost/api/dashboard/run/run_1/ui/app.js")
+      new Request("http://localhost/k6/api/dashboard/run/run_1/ui/app.js")
     );
 
     await expect(response.text()).resolves.toContain(
-      'ws://localhost/api/dashboard/run/run_1/ws'
+      'ws://localhost/k6/api/dashboard/run/run_1/ws'
     );
   });
 
@@ -89,11 +89,11 @@ describe("dashboard proxy route", () => {
     ) as jest.Mock;
 
     const response = await GET(
-      new Request("http://localhost/api/dashboard/run/run_1/ui")
+      new Request("http://localhost/k6/api/dashboard/run/run_1/ui")
     );
 
     expect(response.headers.get("location")).toBe(
-      "/api/dashboard/run/run_1/ui/"
+      "/k6/api/dashboard/run/run_1/ui/"
     );
   });
 
@@ -101,7 +101,7 @@ describe("dashboard proxy route", () => {
     mockGetRunById.mockReturnValue(null);
 
     const response = await GET(
-      new Request("http://localhost/api/dashboard/run/stale-run/ui/")
+      new Request("http://localhost/k6/api/dashboard/run/stale-run/ui/")
     );
 
     expect(response.status).toBe(404);
@@ -117,7 +117,7 @@ describe("dashboard proxy route", () => {
       ],
     });
 
-    await GET(new Request("http://localhost/api/dashboard/ui/"));
+    await GET(new Request("http://localhost/k6/api/dashboard/ui/"));
 
     expect(global.fetch).toHaveBeenCalledWith(
       "http://127.0.0.1:5666/ui/",

@@ -9,6 +9,7 @@ import PanelHeader from "@/components/layout/PanelHeader";
 import TestHistoryReportPreview from "@/components/tabs/TestHistoryReportPreview";
 import { cn } from "@/lib/utils";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
+import { withBasePath } from "@/lib/base-path";
 
 interface ReportInfo {
   name: string;
@@ -51,7 +52,9 @@ export default function TestHistoryTab({
     const requestId = ++fetchReportsRequestIdRef.current;
     setLoading(true);
     try {
-      const res = await fetch(`/api/reports?${namespaceQuery(namespace)}`);
+      const res = await fetch(
+        withBasePath(`/api/reports?${namespaceQuery(namespace)}`)
+      );
       const data = (await res.json()) as { reports: ReportInfo[] };
       if (requestId !== fetchReportsRequestIdRef.current) return;
       setReports(

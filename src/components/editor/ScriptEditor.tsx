@@ -11,6 +11,7 @@ import MonacoEditor from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import type * as MonacoEditor_ from "monaco-editor";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
+import { withBasePath } from "@/lib/base-path";
 
 export interface ScriptEditorHandle {
   save: () => Promise<void>;
@@ -110,7 +111,7 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
       // Inject k6 type definitions generated at build time (best-effort).
       // Each .d.ts file is also registered at the .js path so that relative
       // cross-imports like `import ... from "../html/index.js"` resolve.
-      void fetch("/k6-types.json")
+      void fetch(withBasePath("/k6-types.json"))
         .then((r) => r.json())
         .then((types: Array<{ path: string; content: string }>) => {
           for (const { path, content } of types) {
@@ -154,7 +155,9 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
 export default ScriptEditor;
 
 function fileUrl(filename: string, namespace: string): string {
-  return `/api/files/${encodeApiPath(filename)}?namespace=${encodeURIComponent(namespace)}`;
+  return withBasePath(
+    `/api/files/${encodeApiPath(filename)}?namespace=${encodeURIComponent(namespace)}`
+  );
 }
 
 function encodeApiPath(path: string): string {

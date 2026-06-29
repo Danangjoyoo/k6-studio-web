@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { withBasePath } from "@/lib/base-path";
 
 export interface K6RunnerState {
   lines: string[];
@@ -30,7 +31,7 @@ export function useK6Runner() {
       lastReportName: null,
     });
 
-    const res = await fetch("/api/run", {
+    const res = await fetch(withBasePath("/api/run"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename }),

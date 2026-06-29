@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import MarkdownPreview from "@/components/tabs/MarkdownPreview";
 import { cn } from "@/lib/utils";
 import type { ReportNote } from "@/lib/report-notes";
+import { withBasePath } from "@/lib/base-path";
 
 interface TestHistoryReportPreviewProps {
   namespace: string;
@@ -404,15 +405,21 @@ function insertAt(value: string, insertion: string, start: number, end: number):
 }
 
 function reportSummaryUrl(reportName: string, namespace: string): string {
-  return `/api/reports/${encodeURIComponent(reportName)}?${namespaceQuery(namespace)}`;
+  return withBasePath(
+    `/api/reports/${encodeURIComponent(reportName)}?${namespaceQuery(namespace)}`
+  );
 }
 
 function reportNotesApiUrl(reportName: string, namespace: string): string {
-  return `/api/reports/${encodeURIComponent(reportName)}/notes?${namespaceQuery(namespace)}`;
+  return withBasePath(
+    `/api/reports/${encodeURIComponent(reportName)}/notes?${namespaceQuery(namespace)}`
+  );
 }
 
 function noteAssetsApiUrl(reportName: string, namespace: string): string {
-  return `/api/reports/${encodeURIComponent(reportName)}/note-assets?${namespaceQuery(namespace)}`;
+  return withBasePath(
+    `/api/reports/${encodeURIComponent(reportName)}/note-assets?${namespaceQuery(namespace)}`
+  );
 }
 
 function namespaceQuery(namespace: string): string {

@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { ActiveRun, RunStatus } from "@/lib/run-lock";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
+import { withBasePath } from "@/lib/base-path";
 
 export interface ScriptSession {
   lines: string[];
@@ -94,7 +95,7 @@ export function ScriptWorkspaceProvider({
     async function poll() {
       while (!cancelled) {
         try {
-          const res = await fetch("/api/run/status");
+          const res = await fetch(withBasePath("/api/run/status"));
           if (!cancelled && res.ok) {
             const status = (await res.json()) as RunStatus;
             setGlobalRunning(status.running);
@@ -142,7 +143,7 @@ export function ScriptWorkspaceProvider({
     );
 
     try {
-      const res = await fetch("/api/run", {
+      const res = await fetch(withBasePath("/api/run"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename, namespace }),
@@ -234,7 +235,7 @@ export function ScriptWorkspaceProvider({
 
       const key = sessionKey(activeRun.namespace, activeRun.script);
       try {
-        const response = await fetch("/api/run/cancel", {
+        const response = await fetch(withBasePath("/api/run/cancel"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ runId }),

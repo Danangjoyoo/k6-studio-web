@@ -7,6 +7,7 @@ import {
   sanitizeDashboardHeaders,
   shouldRewriteDashboardBody,
 } from "@/lib/dashboard-proxy";
+import { stripBasePath, withBasePath } from "@/lib/base-path";
 import { getDashboardBasePort, getRunById, getStatus } from "@/lib/run-lock";
 
 function buildProxyHeaders(request: Request): HeadersInit {
@@ -46,7 +47,8 @@ async function proxy(request: Request): Promise<Response> {
   // Reconstruct the upstream path directly from the request URL rather than the
   // catch-all params, so the trailing slash is preserved (k6's `/ui/` returns
   // the dashboard HTML, while `/ui` 301-redirects away).
-  let path = url.pathname.slice(DASHBOARD_PROXY_PREFIX.length);
+  const appPathname = stripBasePath(url.pathname);
+  let path = appPathname.slice(DASHBOARD_PROXY_PREFIX.length);
   if (path === "") path = "/";
   const scoped = extractRunScopedPath(path);
   path = scoped.path;
@@ -55,9 +57,10 @@ async function proxy(request: Request): Promise<Response> {
   if (dashboardPort === null) {
     return new Response("k6 dashboard run not found", { status: 404 });
   }
-  const proxyPrefix = requestedRunId
+  const unscopedProxyPrefix = requestedRunId
     ? `${DASHBOARD_PROXY_PREFIX}/run/${encodeURIComponent(requestedRunId)}`
     : DASHBOARD_PROXY_PREFIX;
+  const proxyPrefix = withBasePath(unscopedProxyPrefix);
   const target = `http://127.0.0.1:${dashboardPort}${path}${url.search}`;
 
   try {

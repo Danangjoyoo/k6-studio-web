@@ -26,7 +26,7 @@ describe("NamespaceSelector", () => {
 
     render(<NamespaceSelector namespace="default" onNamespaceChange={jest.fn()} />);
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/namespaces");
+    expect(fetchMock).toHaveBeenCalledWith("/k6/api/namespaces");
     expect(await screen.findByRole("option", { name: "default" })).toBeInTheDocument();
   });
 
@@ -81,7 +81,7 @@ describe("NamespaceSelector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/namespaces", {
+      expect(fetchMock).toHaveBeenCalledWith("/k6/api/namespaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "team-b" }),
@@ -90,7 +90,7 @@ describe("NamespaceSelector", () => {
     await waitFor(() => {
       expect(onNamespaceChange).toHaveBeenCalledWith("team-b");
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/namespaces");
+    expect(fetchMock).toHaveBeenCalledWith("/k6/api/namespaces");
   });
 
   it("shows an inline error when namespace creation fails validation", async () => {

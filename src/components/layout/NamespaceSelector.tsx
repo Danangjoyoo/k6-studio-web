@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
+import { withBasePath } from "@/lib/base-path";
 
 interface NamespaceSelectorProps {
   namespace: string;
@@ -29,7 +30,7 @@ export default function NamespaceSelector({
   const [creating, setCreating] = useState(false);
 
   const fetchNamespaces = useCallback(async () => {
-    const response = await fetch("/api/namespaces");
+    const response = await fetch(withBasePath("/api/namespaces"));
     if (!response.ok) return;
     const data = (await response.json()) as { namespaces?: string[] };
     const next = Array.from(
@@ -60,7 +61,7 @@ export default function NamespaceSelector({
 
     setCreating(true);
     setError(null);
-    const response = await fetch("/api/namespaces", {
+    const response = await fetch(withBasePath("/api/namespaces"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: trimmed }),

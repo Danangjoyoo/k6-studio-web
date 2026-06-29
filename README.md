@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# k6 Studio Web
 
-## Getting Started
+Browser-based k6 load-test workspace for managing scripts, running k6, viewing terminal output, opening the live k6 dashboard, and browsing saved reports.
 
-First, run the development server:
+## Local Development
+
+Install dependencies, then start the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000/k6`. The root URL `http://localhost:3000/` redirects to `/k6`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Docker Compose
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Start the app and local MinIO stack:
 
-## Learn More
+```bash
+docker compose up --build -d
+```
 
-To learn more about Next.js, take a look at the following resources:
+The app is available at `http://localhost:3000/k6`. MinIO API is exposed on `9000`, the MinIO console is exposed on `9001`, and k6 dashboard ports are exposed on `5665-5684`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Commands
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run dev` starts the Next.js development server and generates k6 type metadata first.
+- `npm run build` creates a production build and generates k6 type metadata first.
+- `npm run start` starts the production server after a build.
+- `npm run lint` runs ESLint.
+- `npx jest` runs the Jest test suite.
+- `npx tsc --noEmit` runs TypeScript verification.
 
-## Deploy on Vercel
+## Runtime Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The app uses a fixed Next.js base path: `/k6`.
+- Do not configure a runtime or build-time `BASE_PATH`; changing the base path requires a coordinated code/config change and rebuild.
+- Browser-owned app URLs should include the base path. Use `withBasePath` from `src/lib/base-path.ts` for client fetches, iframes, and links to app routes.
+- Persisted data should stay app-root-relative. For example, markdown note assets may be stored as `/api/reports/...`; rendering code adds `/k6` at display time.
+- Docker images include the k6 binary and should not rely on host-installed k6.
+- `TOTAL_RUNNERS` controls runner capacity and defaults to `1`. The maximum is `20`.

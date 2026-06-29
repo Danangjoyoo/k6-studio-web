@@ -66,7 +66,7 @@ describe("TestHistoryTab", () => {
     render(<TestHistoryTab namespace="team-a" scriptName="smoke.js" />);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/reports?namespace=team-a");
+      expect(global.fetch).toHaveBeenCalledWith("/k6/api/reports?namespace=team-a");
     });
   });
 
@@ -77,7 +77,7 @@ describe("TestHistoryTab", () => {
 
     expect(screen.getByTitle("smoke.js-1719200000000.html")).toHaveAttribute(
       "src",
-      "/api/reports/smoke.js-1719200000000.html?namespace=team-a"
+      "/k6/api/reports/smoke.js-1719200000000.html?namespace=team-a"
     );
   });
 
@@ -105,8 +105,8 @@ describe("TestHistoryTab", () => {
     ]);
     let teamBCalls = 0;
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (url === "/api/reports?namespace=team-a") return namespaceA.response;
-      if (url === "/api/reports?namespace=team-b") {
+      if (url === "/k6/api/reports?namespace=team-a") return namespaceA.response;
+      if (url === "/k6/api/reports?namespace=team-b") {
         teamBCalls += 1;
         return teamBCalls === 1 ? namespaceB.response : namespaceBRefresh.response;
       }

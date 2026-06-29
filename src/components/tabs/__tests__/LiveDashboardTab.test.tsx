@@ -54,7 +54,7 @@ describe("LiveDashboardTab", () => {
 
     const iframe = screen.getByTitle("k6 Live Dashboard");
     expect(iframe).toBeInTheDocument();
-    expect(iframe.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
+    expect(iframe.getAttribute("src")).toBe("/k6/api/dashboard/ui/?endpoint=/k6/api/dashboard/");
   });
 
   it("renders a run-specific dashboard iframe when run id is provided", () => {
@@ -71,7 +71,7 @@ describe("LiveDashboardTab", () => {
 
     expect(screen.getByTitle("k6 Live Dashboard")).toHaveAttribute(
       "src",
-      "/api/dashboard/run/run_1/ui/?endpoint=%2Fapi%2Fdashboard%2Frun%2Frun_1%2F"
+      "/k6/api/dashboard/run/run_1/ui/?endpoint=%2Fk6%2Fapi%2Fdashboard%2Frun%2Frun_1%2F"
     );
   });
 
@@ -105,7 +105,7 @@ describe("LiveDashboardTab", () => {
     const second = screen.getByTitle("k6 Live Dashboard");
     expect(second).toBeInTheDocument();
     expect(second).not.toBe(first);
-    expect(second.getAttribute("src")).toBe("/api/dashboard/ui/?endpoint=/api/dashboard/");
+    expect(second.getAttribute("src")).toBe("/k6/api/dashboard/ui/?endpoint=/k6/api/dashboard/");
   });
 
   it("keeps the same iframe after the dashboard is reachable", async () => {

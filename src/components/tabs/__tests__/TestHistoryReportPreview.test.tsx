@@ -65,7 +65,7 @@ describe("TestHistoryReportPreview", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByTitle("api/smoke.ts-111.html")).toHaveAttribute(
       "src",
-      "/api/reports/api%2Fsmoke.ts-111.html?namespace=team-a"
+      "/k6/api/reports/api%2Fsmoke.ts-111.html?namespace=team-a"
     );
   });
 
@@ -169,7 +169,7 @@ describe("TestHistoryReportPreview", () => {
     expect(screen.getByRole("heading", { name: "Findings" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "chart" })).toHaveAttribute(
       "src",
-      "/chart.png"
+      "/k6/chart.png"
     );
   });
 
@@ -301,7 +301,7 @@ describe("TestHistoryReportPreview", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/reports/smoke.ts-1.html/note-assets?namespace=team-a",
+        "/k6/api/reports/smoke.ts-1.html/note-assets?namespace=team-a",
         expect.objectContaining({ method: "POST" })
       );
     });

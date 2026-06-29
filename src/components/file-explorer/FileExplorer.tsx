@@ -12,6 +12,7 @@ import NewFileDialog from "./NewFileDialog";
 import NewFolderDialog from "./NewFolderDialog";
 import type { FileNode } from "@/lib/files-tree";
 import { DEFAULT_NAMESPACE } from "@/lib/namespaces";
+import { withBasePath } from "@/lib/base-path";
 
 export interface FileExplorerProps {
   namespace?: string;
@@ -91,7 +92,9 @@ export default function FileExplorer({
 
   const fetchTree = useCallback(async () => {
     const requestId = ++fetchTreeRequestIdRef.current;
-    const res = await fetch(`/api/files?${namespaceQuery(namespace)}`);
+    const res = await fetch(
+      withBasePath(`/api/files?${namespaceQuery(namespace)}`)
+    );
     const data = (await res.json()) as { tree: FileNode[] };
     if (requestId !== fetchTreeRequestIdRef.current) return;
     const nextTree = data.tree ?? [];
@@ -191,7 +194,7 @@ export default function FileExplorer({
     const fullName = parentPath
       ? `${parentPath.replace(/\/$/, "")}/${name}`
       : name;
-    await fetch("/api/files", {
+    await fetch(withBasePath("/api/files"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ namespace, name: fullName, content: DEFAULT_SCRIPT }),
@@ -202,7 +205,7 @@ export default function FileExplorer({
   }
 
   async function handleCreateFolder(path: string) {
-    await fetch("/api/files/folder", {
+    await fetch(withBasePath("/api/files/folder"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ namespace, path }),
@@ -212,16 +215,19 @@ export default function FileExplorer({
   }
 
   async function handleDeleteFile(path: string) {
-    await fetch(`/api/files/${encodeApiPath(path)}?${namespaceQuery(namespace)}`, {
-      method: "DELETE",
-    });
+    await fetch(
+      withBasePath(`/api/files/${encodeApiPath(path)}?${namespaceQuery(namespace)}`),
+      {
+        method: "DELETE",
+      }
+    );
     await fetchTree();
     onFileDeleted?.(path);
   }
 
   async function handleDeleteFolder(path: string) {
     const folderPath = path.replace(/\/+$/, "");
-    await fetch("/api/files/folder", {
+    await fetch(withBasePath("/api/files/folder"), {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ namespace, path: folderPath }),
@@ -230,7 +236,7 @@ export default function FileExplorer({
   }
 
   async function handleRenameFile(oldPath: string, newPath: string) {
-    const response = await fetch("/api/files/rename", {
+    const response = await fetch(withBasePath("/api/files/rename"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ namespace, from: oldPath, to: newPath, type: "file" }),
@@ -245,7 +251,7 @@ export default function FileExplorer({
   }
 
   async function handleRenameFolder(oldPath: string, newPath: string) {
-    const response = await fetch("/api/files/rename", {
+    const response = await fetch(withBasePath("/api/files/rename"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ namespace, from: oldPath, to: newPath, type: "folder" }),
@@ -374,7 +380,7 @@ export default function FileExplorer({
     if (items.length === 0) return;
 
     const targetFolder = normalizeFolderPath(targetFolderPath);
-    const response = await fetch("/api/files/move", {
+    const response = await fetch(withBasePath("/api/files/move"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ namespace, items, targetFolder }),

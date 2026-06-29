@@ -59,11 +59,14 @@ The product is intentionally local/deployment-internal for now. There is no auth
 - Scripts are stored in the MinIO bucket `k6-scripts`.
 - HTML reports are stored in the MinIO bucket `k6-reports`.
 - The app listens on port `3000`.
-- The k6 web dashboard listens on port `5665`.
+- The browser app is served under the fixed Next.js base path `/k6`; open `http://localhost:3000/k6`.
+- Root `/` should redirect to `/k6`.
+- k6 web dashboards use fixed ports `5665-5684`, one per runner slot.
 - MinIO API listens on port `9000`.
 - MinIO console listens on port `9001`.
-- Docker Compose server code should use `MINIO_ENDPOINT=minio`.
-- Docker runtime should use `K6_BIN=/usr/local/bin/k6`.
+- Docker Compose server code should use `AWS_S3_ENDPOINT=http://minio:9000`.
+- `TOTAL_RUNNERS` controls runner capacity and defaults to `1`; the maximum is `20`.
+- `K6_BIN` and `K6_WEB_DASHBOARD_HOST` are hardcoded in `src/lib/k6.ts`; do not add env overrides for them.
 - k6 dashboard host should be `0.0.0.0` inside containers.
 - Local defaults use MinIO credentials `minioadmin` / `minioadmin`.
 
@@ -71,11 +74,13 @@ The product is intentionally local/deployment-internal for now. There is no auth
 
 Treat `Dockerfile` as deployment-facing, not only local development scaffolding. The deployed image must include both the production Next.js app and the k6 binary.
 
-Do not rely on host-installed k6 for server code, Docker behavior, or deployment documentation. In containers, use `K6_BIN=/usr/local/bin/k6`.
+Do not rely on host-installed k6 for server code, Docker behavior, or deployment documentation. The container image must include `/usr/local/bin/k6`.
 
 Do not hard-code `localhost` in server-side code that must also run inside Docker Compose. The app container reaches MinIO through the Compose service name `minio`.
 
-Preserve the app port `3000` and dashboard port `5665` unless there is a coordinated architecture change. If Docker, k6, dashboard, or runtime environment behavior changes, validate with build-oriented commands rather than only `npm run dev`.
+Do not add runtime or build-time `BASE_PATH` configuration. The app base path is fixed in `next.config.ts`; changing it requires a coordinated code/config update and rebuild.
+
+Preserve the app port `3000` and dashboard port range `5665-5684` unless there is a coordinated architecture change. If Docker, k6, dashboard, or runtime environment behavior changes, validate with build-oriented commands rather than only `npm run dev`.
 
 ## Next.js Notes
 
@@ -90,6 +95,8 @@ type Params = { params: Promise<{ path: string[] }> };
 ```
 
 Keep route handlers server-only. Do not import browser-only APIs into server modules.
+
+Client/browser app-owned absolute URLs must use `withBasePath` from `src/lib/base-path.ts` before calling `fetch`, assigning iframe `src`, or linking to app routes. Persisted S3 data and markdown should remain app-root-relative, for example `/api/reports/...`, and add `/k6` only when rendering in the browser.
 
 When reading bracketed App Router paths in zsh, quote them:
 
@@ -123,7 +130,7 @@ Ensure responsive layouts do not overlap, hide important controls, clip labels, 
 
 ## Feature Cautions
 
-Only one k6 run should execute at a time. Respect the run lock in `src/lib/run-lock.ts` and the run status API.
+Multiple k6 runs can execute concurrently up to `TOTAL_RUNNERS`. Respect the runner registry in `src/lib/run-lock.ts` and the run status API.
 
 Terminal output is streamed with Server-Sent Events. Preserve the event framing expected by the client.
 
@@ -131,7 +138,7 @@ Reports are persisted to MinIO only after a run produces an HTML report. Keep re
 
 Folder support uses `.keep` sentinels for empty folders. Do not expose those sentinels as normal files in the UI.
 
-The k6 dashboard port must be released before another run starts, otherwise the next run can race the previous process.
+Each k6 dashboard port must be released before its runner slot is reused, otherwise the next run can race the previous process.
 
 The live dashboard is served through the app so users do not need to open a separate k6 page.
 

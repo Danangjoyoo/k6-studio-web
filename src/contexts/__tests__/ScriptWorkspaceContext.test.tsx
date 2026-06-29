@@ -102,7 +102,7 @@ describe("ScriptWorkspaceContext", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/run",
+      "/k6/api/run",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ filename: "a.js", namespace: "team-a" }),
@@ -204,7 +204,7 @@ describe("ScriptWorkspaceContext", () => {
 
   it("posts a run cancellation request and records a cancellation line", async () => {
     global.fetch = jest.fn((url: string) => {
-      if (url === "/api/run/status") {
+      if (url === "/k6/api/run/status") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -227,7 +227,7 @@ describe("ScriptWorkspaceContext", () => {
           }),
         });
       }
-      if (url === "/api/run/cancel") {
+      if (url === "/k6/api/run/cancel") {
         return Promise.resolve({
           ok: true,
           json: async () => ({ cancelled: true }),
@@ -251,7 +251,7 @@ describe("ScriptWorkspaceContext", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/run/cancel",
+      "/k6/api/run/cancel",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ runId: "run_1" }),
@@ -264,7 +264,7 @@ describe("ScriptWorkspaceContext", () => {
 
   it("records an error line when cancellation fails", async () => {
     global.fetch = jest.fn((url: string) => {
-      if (url === "/api/run/status") {
+      if (url === "/k6/api/run/status") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -287,7 +287,7 @@ describe("ScriptWorkspaceContext", () => {
           }),
         });
       }
-      if (url === "/api/run/cancel") {
+      if (url === "/k6/api/run/cancel") {
         return Promise.resolve({
           ok: false,
           json: async () => ({ error: "run not found" }),

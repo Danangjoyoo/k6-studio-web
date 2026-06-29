@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Activity } from "lucide-react";
 import EmptyState from "@/components/layout/EmptyState";
+import { withBasePath } from "@/lib/base-path";
 
 export interface LiveDashboardTabProps {
   scriptName: string | null;
@@ -102,7 +103,11 @@ export default function LiveDashboardTab({
 }
 
 function dashboardSrc(runId: string | null): string {
-  if (!runId) return "/api/dashboard/ui/?endpoint=/api/dashboard/";
+  if (!runId) {
+    const endpoint = withBasePath("/api/dashboard/");
+    return `${withBasePath("/api/dashboard/ui/")}?endpoint=${endpoint}`;
+  }
   const basePath = `/api/dashboard/run/${encodeURIComponent(runId)}/`;
-  return `${basePath}ui/?endpoint=${encodeURIComponent(basePath)}`;
+  const scopedPath = withBasePath(basePath);
+  return `${scopedPath}ui/?endpoint=${encodeURIComponent(scopedPath)}`;
 }

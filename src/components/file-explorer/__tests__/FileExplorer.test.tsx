@@ -8,7 +8,7 @@ import FileExplorer from "@/components/file-explorer/FileExplorer";
 global.fetch = jest.fn() as jest.Mock;
 
 const fetchMock = global.fetch as jest.Mock;
-const defaultFilesUrl = "/api/files?namespace=default";
+const defaultFilesUrl = "/k6/api/files?namespace=default";
 
 function mockFilesTree(tree: unknown[]) {
   fetchMock.mockResolvedValue({
@@ -145,7 +145,7 @@ function moveFetchSequence(
 }
 
 function lastFetchBody() {
-  const moveCall = fetchMock.mock.calls.find(([url]) => url === "/api/files/move");
+  const moveCall = fetchMock.mock.calls.find(([url]) => url === "/k6/api/files/move");
   if (!moveCall) throw new Error("move API was not called");
   return withoutNamespace(JSON.parse(moveCall[1].body as string));
 }
@@ -243,7 +243,7 @@ async function dragRowToFile(rowPath: string, filePath: string) {
 }
 
 function moveApiCalls() {
-  return fetchMock.mock.calls.filter(([url]) => url === "/api/files/move");
+  return fetchMock.mock.calls.filter(([url]) => url === "/k6/api/files/move");
 }
 
 beforeEach(() => {
@@ -265,7 +265,7 @@ describe("FileExplorer", () => {
     );
 
     await screen.findByText("script.js");
-    expect(fetchMock).toHaveBeenCalledWith("/api/files?namespace=team-a");
+    expect(fetchMock).toHaveBeenCalledWith("/k6/api/files?namespace=team-a");
   });
 
   it("renders file list from API", async () => {
@@ -297,8 +297,8 @@ describe("FileExplorer", () => {
       tree: [{ path: "b-only.ts", name: "b-only.ts", type: "file" }],
     });
     fetchMock.mockImplementation((url: string) => {
-      if (url === "/api/files?namespace=team-a") return namespaceA.response;
-      if (url === "/api/files?namespace=team-b") return namespaceB.response;
+      if (url === "/k6/api/files?namespace=team-a") return namespaceA.response;
+      if (url === "/k6/api/files?namespace=team-b") return namespaceB.response;
       throw new Error(`unexpected url: ${url}`);
     });
 
@@ -458,11 +458,11 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
-    expect(rawJsonBody("/api/files/move")).toEqual({
+    expect(rawJsonBody("/k6/api/files/move")).toEqual({
       namespace: "team-a",
       items: [
         { path: "src/a.ts", type: "file" },
@@ -502,7 +502,7 @@ describe("FileExplorer", () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/files?namespace=team-b");
+      expect(fetchMock).toHaveBeenCalledWith("/k6/api/files?namespace=team-b");
     });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Select a.ts" })).not.toBeInTheDocument();
@@ -519,7 +519,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -561,7 +561,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -698,7 +698,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -743,7 +743,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -764,7 +764,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -785,7 +785,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -804,7 +804,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -888,7 +888,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/move",
+        "/k6/api/files/move",
         expect.objectContaining({ method: "POST" })
       );
     });
@@ -1116,11 +1116,11 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/rename",
+        "/k6/api/files/rename",
         expect.objectContaining({ method: "POST" })
       );
     });
-    expect(lastJsonBody("/api/files/rename")).toEqual({
+    expect(lastJsonBody("/k6/api/files/rename")).toEqual({
       from: "src/a.ts",
       to: "src/renamed.ts",
       type: "file",
@@ -1128,7 +1128,7 @@ describe("FileExplorer", () => {
     await waitFor(() => {
       expect(onFileRenamed).toHaveBeenCalledWith("src/a.ts", "src/renamed.ts", "file");
     });
-    expect(fetchMock.mock.calls[2][0]).toBe("/api/files?namespace=team-a");
+    expect(fetchMock.mock.calls[2][0]).toBe("/k6/api/files?namespace=team-a");
   });
 
   it("does not refresh or report path updates when file rename fails", async () => {
@@ -1216,11 +1216,11 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/rename",
+        "/k6/api/files/rename",
         expect.objectContaining({ method: "POST" })
       );
     });
-    expect(lastJsonBody("/api/files/rename")).toEqual({
+    expect(lastJsonBody("/k6/api/files/rename")).toEqual({
       from: "src",
       to: "source",
       type: "folder",
@@ -1320,13 +1320,13 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files",
+        "/k6/api/files",
         expect.objectContaining({
           method: "POST",
         })
       );
     });
-    expect(rawJsonBody("/api/files")).toMatchObject({
+    expect(rawJsonBody("/k6/api/files")).toMatchObject({
       namespace: "team-a",
       name: "auth/login.ts",
     });
@@ -1384,17 +1384,17 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/folder",
+        "/k6/api/files/folder",
         expect.objectContaining({
           method: "POST",
         })
       );
     });
-    expect(rawJsonBody("/api/files/folder")).toEqual({
+    expect(rawJsonBody("/k6/api/files/folder")).toEqual({
       namespace: "team-a",
       path: "auth/nested",
     });
-    expect(fetchMock.mock.calls[2][0]).toBe("/api/files?namespace=team-a");
+    expect(fetchMock.mock.calls[2][0]).toBe("/k6/api/files?namespace=team-a");
   });
 
   it("normalizes folder delete requests through the folder API", async () => {
@@ -1426,7 +1426,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/folder",
+        "/k6/api/files/folder",
         expect.objectContaining({
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
@@ -1465,7 +1465,7 @@ describe("FileExplorer", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/files/script%20%231.ts?namespace=team%20a",
+        "/k6/api/files/script%20%231.ts?namespace=team%20a",
         { method: "DELETE" }
       );
     });

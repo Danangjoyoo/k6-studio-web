@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { withBasePath } from "@/lib/base-path";
 
 interface MarkdownPreviewProps {
   markdown: string;
@@ -187,7 +188,8 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 
 function safeResourceUrl(value: string): string | null {
   const trimmed = value.trim();
-  if (trimmed.startsWith("/") || trimmed.startsWith("#")) return trimmed;
+  if (trimmed.startsWith("#")) return trimmed;
+  if (trimmed.startsWith("/")) return withBasePath(trimmed);
   try {
     const url = new URL(trimmed);
     if (url.protocol === "http:" || url.protocol === "https:") {

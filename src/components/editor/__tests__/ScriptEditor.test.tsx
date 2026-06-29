@@ -39,7 +39,7 @@ jest.mock("@monaco-editor/react", () => ({
 }));
 
 global.fetch = jest.fn((url: string, opts?: RequestInit) => {
-  if (url === "/k6-types.json") {
+  if (url === "/k6/k6-types.json") {
     return Promise.resolve({ ok: true, json: async () => [] });
   }
   if (!opts?.method || opts.method === "GET") {
@@ -93,7 +93,7 @@ describe("ScriptEditor", () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/files/folder/script%20%231.ts?namespace=team-a"
+        "/k6/api/files/folder/script%20%231.ts?namespace=team-a"
       );
     });
   });
@@ -119,7 +119,7 @@ describe("ScriptEditor", () => {
     await ref.current?.save();
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/files/folder/script%20%231.ts?namespace=team-a",
+      "/k6/api/files/folder/script%20%231.ts?namespace=team-a",
       expect.objectContaining({
         method: "PUT",
         body: JSON.stringify({ content: "// changed" }),
@@ -138,10 +138,10 @@ describe("ScriptEditor", () => {
     const namespaceA = deferredResponse("// namespace a");
     const namespaceB = deferredResponse("// namespace b");
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (url === "/api/files/test.ts?namespace=team-a") {
+      if (url === "/k6/api/files/test.ts?namespace=team-a") {
         return namespaceA.response;
       }
-      if (url === "/api/files/test.ts?namespace=team-b") {
+      if (url === "/k6/api/files/test.ts?namespace=team-b") {
         return namespaceB.response;
       }
       return Promise.resolve({ ok: true, json: async () => [] });
