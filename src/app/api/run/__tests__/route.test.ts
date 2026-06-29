@@ -108,6 +108,46 @@ describe("POST /api/run", () => {
     );
   });
 
+  it("emits a start line before invoking k6", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/run", {
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          filename: "api/smoke.ts",
+        }),
+      })
+    );
+    const text = await readSse(response);
+
+    expect(text).toContain(
+      'data: {"line":"[starting] k6 run for team-a/api/smoke.ts on dashboard port 5665"}'
+    );
+  });
+
+  it("emits an error and completion event when k6 rejects", async () => {
+    mockRunK6.mockRejectedValueOnce(new Error("spawn /usr/local/bin/k6 ENOEXEC"));
+
+    const response = await POST(
+      new Request("http://localhost/api/run", {
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          filename: "api/smoke.ts",
+        }),
+      })
+    );
+    const text = await readSse(response);
+
+    expect(text).toContain(
+      'data: {"line":"[error] spawn /usr/local/bin/k6 ENOEXEC"}'
+    );
+    expect(text).toContain(
+      'data: {"done":true,"exitCode":1,"reportName":null}'
+    );
+    expect(getStatus().running).toBe(false);
+  });
+
   it("returns 400 for an invalid namespace", async () => {
     const response = await POST(
       new Request("http://localhost/api/run", {

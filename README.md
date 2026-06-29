@@ -23,6 +23,19 @@ docker compose up --build -d
 
 The app is available at `http://localhost:3000/k6`. MinIO API is exposed on `9000`, the MinIO console is exposed on `9001`, and k6 dashboard ports are exposed on `5665-5684`.
 
+## Container Images
+
+Build and push production images as multi-arch images so the bundled k6 binary matches the Kubernetes node architecture:
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t docker.io/danangjoyoo/k6-studio-web:<tag> \
+  --push .
+```
+
+Use an immutable tag or digest in Kubernetes manifests rather than relying on `latest`.
+
 ## Commands
 
 - `npm run dev` starts the Next.js development server and generates k6 type metadata first.

@@ -96,6 +96,10 @@ export async function POST(request: Request) {
         }
 
         try {
+          send({
+            line: `[starting] k6 run for ${namespace}/${filename} on dashboard port ${activeRun.dashboardPort}`,
+          });
+
           const exitCode = await runK6(
             scriptPath,
             reportPath,
@@ -128,6 +132,23 @@ export async function POST(request: Request) {
           }
 
           send({ done: true, exitCode, reportName });
+        } catch (error) {
+          if (cancelled) {
+            send({
+              done: true,
+              cancelled: true,
+              exitCode: null,
+              reportName: null,
+            });
+            return;
+          }
+
+          send({
+            line: `[error] ${
+              error instanceof Error ? error.message : "k6 run failed"
+            }`,
+          });
+          send({ done: true, exitCode: 1, reportName: null });
         } finally {
           // Wait for the dashboard port to be released before unlocking so the
           // next run never races the kernel socket (bug H2).

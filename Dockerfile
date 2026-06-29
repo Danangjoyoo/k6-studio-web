@@ -17,13 +17,22 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install k6
+ARG TARGETARCH
+ARG K6_VERSION=0.51.0
 RUN apk add --no-cache curl bash && \
-    curl -L https://github.com/grafana/k6/releases/download/v0.51.0/k6-v0.51.0-linux-amd64.tar.gz \
+    set -eux; \
+    case "${TARGETARCH:-$(uname -m)}" in \
+      amd64|x86_64) k6_arch="amd64" ;; \
+      arm64|aarch64) k6_arch="arm64" ;; \
+      *) echo "unsupported architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac; \
+    curl -L "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-${k6_arch}.tar.gz" \
       -o /tmp/k6.tar.gz && \
     tar -xzf /tmp/k6.tar.gz -C /tmp && \
-    mv /tmp/k6-v0.51.0-linux-amd64/k6 /usr/local/bin/k6 && \
+    mv "/tmp/k6-v${K6_VERSION}-linux-${k6_arch}/k6" /usr/local/bin/k6 && \
     chmod +x /usr/local/bin/k6 && \
-    rm -rf /tmp/k6.tar.gz /tmp/k6-v0.51.0-linux-amd64
+    /usr/local/bin/k6 version && \
+    rm -rf /tmp/k6.tar.gz "/tmp/k6-v${K6_VERSION}-linux-${k6_arch}"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

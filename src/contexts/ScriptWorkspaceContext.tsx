@@ -131,6 +131,17 @@ export function ScriptWorkspaceProvider({
     const controller = new AbortController();
     abortRefs.current[key] = controller;
 
+    function finishWithError(message: string) {
+      setSessions((s) =>
+        updateSession(s, key, {
+          isRunning: false,
+          lines: [...(s[key]?.lines ?? []), `[error] ${message}`],
+        })
+      );
+      setRunningScript(null);
+      delete abortRefs.current[key];
+    }
+
     setRunningScript(filename);
     setRunEpoch((e) => e + 1);
     setSessions((s) =>
@@ -163,14 +174,21 @@ export function ScriptWorkspaceProvider({
         return;
       }
 
+      if (!res.ok) {
+        const detail = await readRunFailure(res);
+        finishWithError(`run request failed (${res.status}): ${detail}`);
+        return;
+      }
+
       const reader = res.body?.getReader();
       if (!reader) {
-        delete abortRefs.current[key];
+        finishWithError("run response did not include a stream");
         return;
       }
 
       const decoder = new TextDecoder();
       let buf = "";
+      let completed = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -197,6 +215,7 @@ export function ScriptWorkspaceProvider({
               });
             }
             if (msg.done) {
+              completed = true;
               setSessions((s) =>
                 updateSession(s, key, {
                   isRunning: false,
@@ -212,19 +231,12 @@ export function ScriptWorkspaceProvider({
           }
         }
       }
+      if (!completed && !controller.signal.aborted) {
+        finishWithError("run stream ended before completion");
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setSessions((s) =>
-        updateSession(s, key, {
-          isRunning: false,
-          lines: [
-            ...(s[key]?.lines ?? []),
-            `[error] ${err instanceof Error ? err.message : "run failed"}`,
-          ],
-        })
-      );
-      setRunningScript(null);
-      delete abortRefs.current[key];
+      finishWithError(err instanceof Error ? err.message : "run failed");
     }
   }, [namespace]);
 
@@ -338,4 +350,24 @@ function legacyStatusRun(status: RunStatus): ActiveRun[] {
       dashboardPort: 5665,
     },
   ];
+}
+
+async function readRunFailure(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) return response.statusText || "request failed";
+
+    try {
+      const body = JSON.parse(text) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) {
+        return body.error;
+      }
+    } catch {
+      // Use raw text when the response body is not JSON.
+    }
+
+    return text.slice(0, 300);
+  } catch {
+    return response.statusText || "request failed";
+  }
 }

@@ -36,6 +36,8 @@ function wrapper({
 describe("ScriptWorkspaceContext", () => {
   beforeEach(() => {
     global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
       body: {
         getReader: () => ({
           read: async () => ({
@@ -61,6 +63,8 @@ describe("ScriptWorkspaceContext", () => {
     const bytes = Buffer.from(sse, "utf-8");
 
     global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
       body: {
         getReader: () => {
           let sent = false;
@@ -90,6 +94,92 @@ describe("ScriptWorkspaceContext", () => {
       expect(result.current.getSession("a.js").lastReportName).toBe("a.js-1.html");
     });
     expect(result.current.getSession("b.js").lines).toEqual([]);
+  });
+
+  it("records an error line when the run request returns a non-ok response", async () => {
+    global.fetch = jest.fn((url: string) => {
+      if (url === "/k6/api/run/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: false,
+            namespace: null,
+            script: null,
+            activeRunners: 0,
+            capacity: 1,
+            runs: [],
+            startedAt: null,
+          }),
+        });
+      }
+      if (url === "/k6/api/run") {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          statusText: "Internal Server Error",
+          text: async () => JSON.stringify({ error: "k6 failed to start" }),
+          body: null,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => wrapper({ children }),
+    });
+
+    await act(async () => {
+      await result.current.runScript("a.js");
+    });
+
+    expect(result.current.getSession("a.js")).toMatchObject({
+      isRunning: false,
+      lines: ["[error] run request failed (500): k6 failed to start"],
+    });
+  });
+
+  it("records an error line when the run stream closes without completion", async () => {
+    global.fetch = jest.fn((url: string) => {
+      if (url === "/k6/api/run/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: false,
+            namespace: null,
+            script: null,
+            activeRunners: 0,
+            capacity: 1,
+            runs: [],
+            startedAt: null,
+          }),
+        });
+      }
+      if (url === "/k6/api/run") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: async () => ({ done: true, value: undefined }),
+            }),
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => wrapper({ children }),
+    });
+
+    await act(async () => {
+      await result.current.runScript("a.js");
+    });
+
+    expect(result.current.getSession("a.js")).toMatchObject({
+      isRunning: false,
+      lines: ["[error] run stream ended before completion"],
+    });
   });
 
   it("posts the provider namespace when running a script", async () => {
@@ -166,6 +256,8 @@ describe("ScriptWorkspaceContext", () => {
     const bytes = Buffer.from(sse, "utf-8");
 
     global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
       body: {
         getReader: () => {
           let sent = false;
