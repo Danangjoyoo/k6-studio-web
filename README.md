@@ -28,10 +28,31 @@ The app is available at `http://localhost:3000/k6`. MinIO API is exposed on `900
 Build and push production images as multi-arch images so the bundled k6 binary matches the Kubernetes node architecture:
 
 ```bash
+docker buildx create --name multiarch --driver docker-container --use
+docker buildx inspect --bootstrap
+
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   -t docker.io/danangjoyoo/k6-studio-web:<tag> \
   --push .
+```
+
+The default Docker buildx `docker` driver does not support multi-platform `--push`; use the `docker-container` builder above for multi-arch images.
+
+For ARM-only deployments, such as the current `arm64` k6 Studio Kubernetes workload, a single-platform image is enough:
+
+```bash
+docker buildx build \
+  --platform linux/arm64 \
+  -t docker.io/danangjoyoo/k6-studio-web:<tag> \
+  --push .
+```
+
+On an ARM machine, this equivalent local-build path also works:
+
+```bash
+docker build -t docker.io/danangjoyoo/k6-studio-web:<tag> .
+docker push docker.io/danangjoyoo/k6-studio-web:<tag>
 ```
 
 Use an immutable tag or digest in Kubernetes manifests rather than relying on `latest`.
