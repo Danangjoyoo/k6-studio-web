@@ -8,8 +8,8 @@ import httpProxy from "http-proxy";
 import dashboardRouting from "./docker-dashboard-routing.cjs";
 
 const {
-  DASHBOARD_PREFIX,
   getScopedRunId,
+  isDashboardUrl,
   resolveDashboardTarget,
   stripDashboardPrefix,
 } = dashboardRouting;
@@ -101,7 +101,7 @@ server.on("upgrade", (req, socket, head) => {
 
 async function handleUpgrade(req, socket, head) {
   const url = req.url ?? "";
-  if (url.startsWith(DASHBOARD_PREFIX)) {
+  if (isDashboardUrl(url)) {
     const activeRuns = await getActiveRunsForDashboardUrl(url);
     const target = resolveDashboardTarget(url, activeRuns);
     if (!target) {

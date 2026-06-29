@@ -1,4 +1,5 @@
 const DASHBOARD_PREFIX = "/api/dashboard";
+const APP_BASE_PATH = "/k6";
 const DASHBOARD_BASE_PORT = 5665;
 const MAX_RUNNERS = 20;
 
@@ -6,7 +7,16 @@ function parseDashboardUrl(url) {
   return new URL(url || "/", "http://k6-studio.local");
 }
 
+function stripAppBasePath(pathname) {
+  if (pathname === APP_BASE_PATH) return "/";
+  if (pathname.startsWith(`${APP_BASE_PATH}/`)) {
+    return pathname.slice(APP_BASE_PATH.length);
+  }
+  return pathname;
+}
+
 function extractRunId(pathname) {
+  pathname = stripAppBasePath(pathname);
   const segments = pathname.split("/");
   if (
     segments[1] !== "api" ||
@@ -21,6 +31,11 @@ function extractRunId(pathname) {
 
 function getScopedRunId(url) {
   return extractRunId(parseDashboardUrl(url).pathname);
+}
+
+function isDashboardUrl(url) {
+  const pathname = stripAppBasePath(parseDashboardUrl(url).pathname);
+  return pathname === DASHBOARD_PREFIX || pathname.startsWith(`${DASHBOARD_PREFIX}/`);
 }
 
 function runnerIndexFromRunId(runId) {
@@ -59,8 +74,9 @@ function resolveDashboardTarget(url, activeRuns) {
 
 function stripDashboardPrefix(url) {
   const parsed = parseDashboardUrl(url);
-  const segments = parsed.pathname.split("/");
-  let stripped = parsed.pathname;
+  const pathname = stripAppBasePath(parsed.pathname);
+  const segments = pathname.split("/");
+  let stripped = pathname;
 
   if (
     segments[1] === "api" &&
@@ -69,8 +85,8 @@ function stripDashboardPrefix(url) {
     segments[4]
   ) {
     stripped = `/${segments.slice(5).join("/")}`;
-  } else if (parsed.pathname.startsWith(DASHBOARD_PREFIX)) {
-    stripped = parsed.pathname.slice(DASHBOARD_PREFIX.length);
+  } else if (pathname.startsWith(DASHBOARD_PREFIX)) {
+    stripped = pathname.slice(DASHBOARD_PREFIX.length);
   }
 
   if (!stripped || stripped === "/") return `/${parsed.search}`;
@@ -82,6 +98,7 @@ module.exports = {
   DASHBOARD_PREFIX,
   MAX_RUNNERS,
   getScopedRunId,
+  isDashboardUrl,
   resolveDashboardPort,
   resolveDashboardTarget,
   stripDashboardPrefix,

@@ -13,6 +13,7 @@ export interface LiveDashboardTabProps {
 }
 
 const RETRY_MS = 2000;
+const READINESS_TIMEOUT_MS = 1800;
 
 export default function LiveDashboardTab({
   scriptName,
@@ -34,13 +35,22 @@ export default function LiveDashboardTab({
     if (!scriptName || !isActiveRun || dashboardReady) return;
 
     let cancelled = false;
+    let probeInFlight = false;
+    const activeProbeControllers = new Set<AbortController>();
 
-    async function probeDashboard(remountOnFailure: boolean) {
+    async function probeDashboard() {
+      if (probeInFlight) return;
+      probeInFlight = true;
+      const controller = new AbortController();
+      activeProbeControllers.add(controller);
+      const timeout = setTimeout(() => {
+        controller.abort();
+      }, READINESS_TIMEOUT_MS);
       try {
-        const response = await fetch(dashboardSrc(runId), { cache: "no-store" });
+        const ready = await probeDashboardEvents(runId, controller.signal);
         if (cancelled) return;
 
-        if (response.ok) {
+        if (ready) {
           setDashboardReady(true);
           if (hadFailedProbeRef.current) {
             setRetryKey((current) => current + 1);
@@ -49,23 +59,27 @@ export default function LiveDashboardTab({
         }
       } catch {
         // Treat network/proxy failures like a non-ready dashboard.
+      } finally {
+        clearTimeout(timeout);
+        activeProbeControllers.delete(controller);
+        probeInFlight = false;
       }
 
       if (!cancelled) {
         hadFailedProbeRef.current = true;
-        if (remountOnFailure) {
-          setRetryKey((current) => current + 1);
-        }
       }
     }
 
-    void probeDashboard(false);
+    void probeDashboard();
     const retry = setInterval(() => {
-      void probeDashboard(true);
+      void probeDashboard();
     }, RETRY_MS);
 
     return () => {
       cancelled = true;
+      for (const controller of activeProbeControllers) {
+        controller.abort();
+      }
       clearInterval(retry);
     };
   }, [dashboardReady, isActiveRun, scriptName, runEpoch, runId]);
@@ -94,7 +108,7 @@ export default function LiveDashboardTab({
     <div className="h-full bg-panel p-2">
       <iframe
         key={`${scriptName}-${runEpoch}-${retryKey}`}
-        src={dashboardSrc(runId)}
+        src={dashboardFrameSrc(runId, retryKey)}
         className="h-full w-full rounded-md border border-border ring-1 ring-border"
         title="k6 Live Dashboard"
       />
@@ -110,4 +124,44 @@ function dashboardSrc(runId: string | null): string {
   const basePath = `/api/dashboard/run/${encodeURIComponent(runId)}/`;
   const scopedPath = withBasePath(basePath);
   return `${scopedPath}ui/?endpoint=${encodeURIComponent(scopedPath)}`;
+}
+
+function dashboardFrameSrc(runId: string | null, reloadKey: number): string {
+  const src = dashboardSrc(runId);
+  if (reloadKey === 0) {
+    return src;
+  }
+  return `${src}${src.includes("?") ? "&" : "?"}_reload=${reloadKey}`;
+}
+
+function dashboardEventsSrc(runId: string | null): string {
+  if (!runId) {
+    return withBasePath("/api/dashboard/events");
+  }
+  return withBasePath(
+    `/api/dashboard/run/${encodeURIComponent(runId)}/events`
+  );
+}
+
+async function probeDashboardEvents(
+  runId: string | null,
+  signal: AbortSignal
+): Promise<boolean> {
+  const response = await fetch(dashboardEventsSrc(runId), {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    return false;
+  }
+
+  const reader = response.body.getReader();
+  try {
+    const { done, value } = await reader.read();
+    return !done && value !== undefined && value.byteLength > 0;
+  } finally {
+    if ("cancel" in reader) {
+      await reader.cancel().catch(() => undefined);
+    }
+  }
 }
