@@ -13,6 +13,13 @@
 # testing
 /coverage
 
+# local tooling
+.playwright-mcp/
+.superpowers/
+.cursor/
+.claude/
+.codex/
+
 # next.js
 /.next/
 /out/

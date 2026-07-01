@@ -73,7 +73,7 @@ describe("NamespaceSelector", () => {
     expect(onNamespaceChange).toHaveBeenCalledWith("team-a");
   });
 
-  it("creates a namespace, refreshes the list, and selects it", async () => {
+  it("opens namespace management from the dropdown and creates a namespace", async () => {
     const onNamespaceChange = jest.fn();
     fetchMock
       .mockResolvedValueOnce({
@@ -99,11 +99,14 @@ describe("NamespaceSelector", () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Create namespace" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: default" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
     fireEvent.change(await screen.findByLabelText("Namespace name"), {
       target: { value: "team-b" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create namespace" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/k6/api/namespaces", {
@@ -132,11 +135,14 @@ describe("NamespaceSelector", () => {
 
     render(<NamespaceSelector namespace="default" onNamespaceChange={jest.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Create namespace" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: default" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
     fireEvent.change(await screen.findByLabelText("Namespace name"), {
       target: { value: "bad name" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create namespace" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Invalid namespace"
@@ -170,7 +176,8 @@ describe("NamespaceSelector", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Namespace: team-empty" })
     );
-    fireEvent.click(screen.getByRole("button", { name: "Delete namespace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete namespace team-empty" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm delete namespace" }));
 
     await waitFor(() => {
@@ -201,7 +208,8 @@ describe("NamespaceSelector", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Namespace: team-a" })
     );
-    fireEvent.click(screen.getByRole("button", { name: "Delete namespace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete namespace team-a" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm delete namespace" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -209,7 +217,136 @@ describe("NamespaceSelector", () => {
     );
   });
 
-  it("does not offer deletion for the default namespace", async () => {
+  it("keeps destructive actions out of the quick namespace dropdown", async () => {
+    mockNamespaces(["default", "team-a"]);
+
+    render(<NamespaceSelector namespace="team-a" onNamespaceChange={jest.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: team-a" })
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Manage namespaces" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /delete namespace/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens inline title editing from a pencil button and renames a namespace", async () => {
+    const onNamespaceChange = jest.fn();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ namespaces: ["default", "team-a"] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          from: "team-a",
+          to: "team-b",
+          moved: { scripts: 1, reports: 1 },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ namespaces: ["default", "team-b"] }),
+      });
+
+    render(
+      <NamespaceSelector namespace="team-a" onNamespaceChange={onNamespaceChange} />
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: team-a" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
+
+    const row = screen.getByTestId("manage-namespace-row-team-a");
+    expect(
+      within(row).queryByRole("textbox", { name: "Rename team-a" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Edit namespace team-a" })
+    );
+
+    fireEvent.change(within(row).getByRole("textbox", { name: "Rename team-a" }), {
+      target: { value: "team-b" },
+    });
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Save namespace team-a" })
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/k6/api/namespaces", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "team-a", to: "team-b" }),
+      });
+    });
+    expect(onNamespaceChange).toHaveBeenCalledWith("team-b");
+  });
+
+  it("cancels inline namespace editing without saving", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ namespaces: ["default", "team-a"] }),
+    });
+
+    render(<NamespaceSelector namespace="team-a" onNamespaceChange={jest.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: team-a" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
+
+    const row = screen.getByTestId("manage-namespace-row-team-a");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Edit namespace team-a" })
+    );
+    fireEvent.change(within(row).getByRole("textbox", { name: "Rename team-a" }), {
+      target: { value: "team-b" },
+    });
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Cancel rename team-a" })
+    );
+
+    expect(
+      within(row).queryByRole("textbox", { name: "Rename team-a" })
+    ).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/k6/api/namespaces",
+      expect.objectContaining({ method: "PATCH" })
+    );
+  });
+
+  it("keeps namespace rows in a dedicated inner scroll area", async () => {
+    mockNamespaces([
+      "default",
+      "team-a",
+      "team-b",
+      "team-c",
+      "team-d",
+      "team-e",
+      "team-f",
+      "team-g",
+    ]);
+
+    render(<NamespaceSelector namespace="default" onNamespaceChange={jest.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: default" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
+
+    expect(screen.getByTestId("namespace-management-list")).toHaveClass(
+      "overflow-y-auto"
+    );
+  });
+
+  it("overrides the default narrow dialog width for namespace management", async () => {
     mockNamespaces(["default", "team-a"]);
 
     render(<NamespaceSelector namespace="default" onNamespaceChange={jest.fn()} />);
@@ -217,9 +354,27 @@ describe("NamespaceSelector", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Namespace: default" })
     );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
 
+    expect(screen.getByRole("dialog")).toHaveClass("sm:max-w-2xl");
+  });
+
+  it("does not offer default namespace rename or delete in management", async () => {
+    mockNamespaces(["default", "team-a"]);
+
+    render(<NamespaceSelector namespace="default" onNamespaceChange={jest.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Namespace: default" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Manage namespaces" }));
+
+    const row = screen.getByTestId("manage-namespace-row-default");
     expect(
-      screen.queryByRole("button", { name: "Delete namespace" })
+      within(row).queryByRole("button", { name: /edit namespace default/i })
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole("button", { name: /delete namespace default/i })
     ).not.toBeInTheDocument();
   });
 });

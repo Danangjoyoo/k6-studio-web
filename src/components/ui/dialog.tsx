@@ -65,13 +65,13 @@ function DialogContent({
             render={
               <Button
                 variant="ghost"
+                aria-label="Close"
                 className="absolute top-3 right-3"
                 size="icon-sm"
               />
             }
           >
-            <X />
-            Close
+            <X aria-hidden="true" />
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

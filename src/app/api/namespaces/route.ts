@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { ensureBuckets, getMinioClient, SCRIPTS_BUCKET } from "@/lib/minio";
+import {
+  ensureBuckets,
+  getMinioClient,
+  REPORTS_BUCKET,
+  SCRIPTS_BUCKET,
+} from "@/lib/minio";
 import {
   DEFAULT_NAMESPACE,
   getNamespaceFromRequest,
@@ -71,6 +76,76 @@ export async function POST(request: Request) {
   return NextResponse.json({ namespace }, { status: 201 });
 }
 
+export async function PATCH(request: Request) {
+  let from: string;
+  let to: string;
+  try {
+    const body = (await request.json()) as { from?: unknown; to?: unknown };
+    from = normalizeNamespace(body.from);
+    to = normalizeNamespace(body.to);
+  } catch (error) {
+    if (error instanceof NamespaceError || error instanceof SyntaxError) {
+      return NextResponse.json(
+        { error: "Invalid namespace" },
+        { status: 400 }
+      );
+    }
+    throw error;
+  }
+
+  if (from === DEFAULT_NAMESPACE) {
+    return NextResponse.json(
+      { error: "Default namespace cannot be renamed" },
+      { status: 400 }
+    );
+  }
+  if (to === DEFAULT_NAMESPACE) {
+    return NextResponse.json(
+      { error: "Default namespace cannot be used as a rename target" },
+      { status: 400 }
+    );
+  }
+  if (from === to) {
+    return NextResponse.json({ from, to, moved: { scripts: 0, reports: 0 } });
+  }
+
+  await ensureBuckets();
+  const client = getMinioClient();
+  const [sourceScripts, targetScripts, sourceReports, targetReports] =
+    await Promise.all([
+      listObjectsWithPrefix(client, SCRIPTS_BUCKET, namespacePrefix(from)),
+      listObjectsWithPrefix(client, SCRIPTS_BUCKET, namespacePrefix(to)),
+      listObjectsWithPrefix(client, REPORTS_BUCKET, namespacePrefix(from)),
+      listObjectsWithPrefix(client, REPORTS_BUCKET, namespacePrefix(to)),
+    ]);
+
+  if (!sourceScripts.includes(NAMESPACE_MARKER_OBJECT(from))) {
+    return NextResponse.json({ error: "Namespace not found" }, { status: 404 });
+  }
+
+  if (targetScripts.length > 0 || targetReports.length > 0) {
+    return NextResponse.json(
+      { error: "Namespace already exists" },
+      { status: 409 }
+    );
+  }
+
+  const scriptMoves = buildNamespaceObjectMoves(sourceScripts, from, to);
+  const reportMoves = buildNamespaceObjectMoves(sourceReports, from, to);
+
+  await moveNamespaceObjects(client, SCRIPTS_BUCKET, scriptMoves);
+  await moveNamespaceObjects(client, REPORTS_BUCKET, reportMoves);
+
+  return NextResponse.json({
+    from,
+    to,
+    moved: {
+      scripts: scriptMoves.length,
+      reports: reportMoves.length,
+    },
+  });
+}
+
 export async function DELETE(request: Request) {
   let namespace: string;
   try {
@@ -92,7 +167,11 @@ export async function DELETE(request: Request) {
   await ensureBuckets();
   const client = getMinioClient();
   const markerObject = NAMESPACE_MARKER_OBJECT(namespace);
-  const objects = await listObjectsWithPrefix(client, namespacePrefix(namespace));
+  const objects = await listObjectsWithPrefix(
+    client,
+    SCRIPTS_BUCKET,
+    namespacePrefix(namespace)
+  );
 
   if (objects.length === 0 || !objects.includes(markerObject)) {
     return NextResponse.json({ error: "Namespace not found" }, { status: 404 });
@@ -111,10 +190,11 @@ export async function DELETE(request: Request) {
 
 async function listObjectsWithPrefix(
   client: ReturnType<typeof getMinioClient>,
+  bucket: string,
   prefix: string
 ): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    const stream = client.listObjects(SCRIPTS_BUCKET, prefix, true);
+    const stream = client.listObjects(bucket, prefix, true);
     const names: string[] = [];
     stream.on("data", (obj) => {
       if (obj.name) names.push(obj.name);
@@ -122,4 +202,32 @@ async function listObjectsWithPrefix(
     stream.on("end", () => resolve(names));
     stream.on("error", reject);
   });
+}
+
+function buildNamespaceObjectMoves(
+  sourceObjects: string[],
+  from: string,
+  to: string
+): Array<{ from: string; to: string }> {
+  const fromPrefix = namespacePrefix(from);
+  const toPrefix = namespacePrefix(to);
+  return sourceObjects
+    .filter((objectName) => objectName.startsWith(fromPrefix))
+    .map((objectName) => ({
+      from: objectName,
+      to: `${toPrefix}${objectName.slice(fromPrefix.length)}`,
+    }));
+}
+
+async function moveNamespaceObjects(
+  client: ReturnType<typeof getMinioClient>,
+  bucket: string,
+  moves: Array<{ from: string; to: string }>
+) {
+  for (const move of moves) {
+    await client.copyObject(bucket, move.to, `/${bucket}/${move.from}`);
+  }
+  for (const move of moves) {
+    await client.removeObject(bucket, move.from);
+  }
 }

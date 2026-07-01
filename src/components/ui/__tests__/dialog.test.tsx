@@ -26,4 +26,19 @@ describe("DialogContent", () => {
     expect(closeButton).not.toHaveClass("top-2");
     expect(closeButton).not.toHaveClass("right-2");
   });
+
+  it("renders the close button as an icon-only control", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Manage namespaces</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    );
+
+    const closeButton = screen.getByRole("button", { name: "Close" });
+
+    expect(closeButton).toHaveAttribute("aria-label", "Close");
+    expect(closeButton).toHaveTextContent("");
+  });
 });

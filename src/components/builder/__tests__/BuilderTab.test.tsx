@@ -102,4 +102,26 @@ describe("BuilderTab", () => {
 
     expect(screen.getByText(/query \/ mutation/i)).toBeInTheDocument();
   });
+
+  it("renders sample add actions as rounded bordered buttons", () => {
+    render(<BuilderTab />);
+
+    for (const name of [
+      /add body sample/i,
+      /add header sample/i,
+      /add query sample/i,
+    ]) {
+      expect(screen.getByRole("button", { name })).toHaveClass(
+        "rounded-md",
+        "border"
+      );
+    }
+
+    fireEvent.click(screen.getAllByRole("button", { name: /graphql/i })[0]);
+
+    expect(screen.getByRole("button", { name: /add variables sample/i })).toHaveClass(
+      "rounded-md",
+      "border"
+    );
+  });
 });

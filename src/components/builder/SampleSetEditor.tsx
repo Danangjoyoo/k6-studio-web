@@ -68,15 +68,12 @@ export default function SampleSetEditor(props: SampleSetEditorProps) {
               </Button>
             </div>
           ))}
-          <button
-            type="button"
-            className="self-start font-mono text-[11px] text-muted-foreground hover:text-primary"
+          <AddSampleButton
+            label={props.addLabel}
             onClick={() =>
               props.dispatch({ type: "pushSample", path: props.path })
             }
-          >
-            + {props.addLabel}
-          </button>
+          />
         </div>
       </section>
     );
@@ -139,18 +136,15 @@ export default function SampleSetEditor(props: SampleSetEditorProps) {
                   </Button>
                 </div>
               ))}
-              <button
-                type="button"
-                className="self-start font-mono text-[11px] text-muted-foreground hover:text-primary"
+              <AddSampleButton
+                label={props.addRowLabel}
                 onClick={() =>
                   props.dispatch({
                     type: "pushSample",
                     path: `${props.path}.${setIndex}`,
                   })
                 }
-              >
-                + {props.addRowLabel}
-              </button>
+              />
             </div>
             <Button
               type="button"
@@ -170,16 +164,31 @@ export default function SampleSetEditor(props: SampleSetEditorProps) {
             </Button>
           </div>
         ))}
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 self-start font-mono text-[11px] text-muted-foreground hover:text-primary"
+        <AddSampleButton
+          label={props.addSetLabel}
           onClick={() => props.dispatch({ type: "pushSample", path: props.path })}
-        >
-          <Plus className="h-3 w-3" />
-          {props.addSetLabel}
-        </button>
+        />
       </div>
     </section>
+  );
+}
+
+function AddSampleButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-md border border-dashed border-border bg-panel-raised/40 px-2.5 py-1 font-mono text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
+      onClick={onClick}
+    >
+      <Plus className="h-3 w-3" />
+      {label}
+    </button>
   );
 }
 
