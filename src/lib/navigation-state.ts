@@ -2,7 +2,7 @@ import { normalizeNamespace } from "@/lib/namespaces";
 
 export const SUMMARY_REPORT_TAB_ID = "summary";
 
-export type MainView = "editor" | "live-dashboard" | "test-history";
+export type MainView = "builder" | "editor" | "live-dashboard" | "test-history";
 
 export interface NavigationState {
   namespace: string | null;
@@ -13,6 +13,7 @@ export interface NavigationState {
 }
 
 const MAIN_VIEWS = new Set<MainView>([
+  "builder",
   "editor",
   "live-dashboard",
   "test-history",

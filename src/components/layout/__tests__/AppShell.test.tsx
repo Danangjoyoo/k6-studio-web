@@ -44,6 +44,7 @@ let mockTestHistoryTabProps:
       onActiveReportTabChange?: (tabId: string) => void;
     }
   | undefined;
+let mockBuilderTabRenderCount = 0;
 let mockWorkspaceState = {
   namespace: "default",
   runEpoch: 0,
@@ -209,6 +210,14 @@ jest.mock("@/components/tabs/EditorTab", () => ({
   },
 }));
 
+jest.mock("@/components/builder/BuilderTab", () => ({
+  __esModule: true,
+  default: () => {
+    mockBuilderTabRenderCount += 1;
+    return <div data-testid="builder-tab">builder</div>;
+  },
+}));
+
 jest.mock("@/components/tabs/LiveDashboardTab", () => ({
   __esModule: true,
   default: (props: {
@@ -260,6 +269,7 @@ describe("AppShell", () => {
     mockEditorTabProps = undefined;
     mockLiveDashboardTabProps = undefined;
     mockTestHistoryTabProps = undefined;
+    mockBuilderTabRenderCount = 0;
     localStorage.clear();
     mockWorkspaceState = {
       namespace: "default",
@@ -277,6 +287,7 @@ describe("AppShell", () => {
   it("renders file explorer and tab navigation", () => {
     render(<AppShell />);
     expect(screen.getByTestId("file-explorer")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /builder/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /editor/i })).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /live dashboard/i })
@@ -285,6 +296,15 @@ describe("AppShell", () => {
       screen.getByRole("tab", { name: /test history/i })
     ).toBeInTheDocument();
     expect(screen.getByTestId("resize-handle")).toBeInTheDocument();
+  });
+
+  it("shows the Builder tab first", () => {
+    render(<AppShell />);
+
+    const builderTab = screen.getAllByRole("tab")[0];
+    expect(builderTab).toHaveTextContent(/builder/i);
+    fireEvent.click(builderTab);
+    expect(mockBuilderTabRenderCount).toBeGreaterThan(0);
   });
 
   it("defaults namespace to default and propagates it to workspace clients", () => {
@@ -357,6 +377,26 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByRole("tab", { name: /test history/i }));
     expect(window.location.search).toBe(
       "?namespace=default&view=test-history&script=src%2Fa.ts"
+    );
+  });
+
+  it("navigates from Builder to Editor when a script is selected", () => {
+    render(<AppShell />);
+
+    fireEvent.click(screen.getByRole("tab", { name: /builder/i }));
+    expect(screen.getByRole("tab", { name: /builder/i })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /select-test/i }));
+
+    expect(screen.getByRole("tab", { name: /editor/i })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(window.location.search).toBe(
+      "?namespace=default&view=editor&script=test.js"
     );
   });
 

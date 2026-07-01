@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Script Builder — interactive demo</title>
+<style>
+  :root{
+    --void:#0b0d12; --panel:#12151c; --panel-raised:#1a1f2b;
+    --foreground:#e8ecf4; --muted-foreground:#8b93a7;
+    --signal:#8b7cff; --run:#f5a524; --ok:#3ddc97;
+    --border:rgba(42,49,66,.6); --input:rgba(42,49,66,.8);
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--void);color:var(--foreground);font-family:var(--sans);font-size:13px}
+  .app{display:grid;grid-template-rows:auto 1fr;height:100vh;overflow:hidden}
+  .hdr{display:flex;align-items:center;gap:12px;height:44px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .hdr .logo{font-weight:600}.hdr .logo b{color:var(--signal)}
+  .ns{margin-left:8px;font-size:11px;color:var(--muted-foreground);border:1px solid var(--border);border-radius:6px;padding:3px 8px;background:var(--panel-raised)}
+  .hdr .spacer{flex:1}
+  .runners{font-size:11px;color:var(--muted-foreground);border:1px solid var(--border);border-radius:6px;padding:3px 8px}.runners b{color:var(--ok)}
+  .body{display:grid;grid-template-columns:200px 1fr;min-height:0;overflow:hidden}
+  .side{border-right:1px solid var(--border);background:var(--panel);overflow:auto;padding:8px}
+  .side .ttl{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted-foreground);padding:6px 6px}
+  .frow{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;font-family:var(--mono);font-size:11px;color:var(--muted-foreground)}
+  .frow svg{width:13px;height:13px;opacity:.8}
+  .main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  .tabs{display:flex;align-items:center;height:40px;padding:0 8px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .tab{display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;font-size:12px;font-weight:500;color:var(--muted-foreground);border-bottom:2px solid transparent;cursor:pointer}
+  .tab svg{width:14px;height:14px}.tab.active{color:var(--foreground);border-bottom-color:var(--signal)}.tab.new{color:var(--signal)}
+  .toolbar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .toolbar .title{font-size:12px;display:flex;align-items:center;gap:7px}.toolbar .title svg{width:15px;height:15px;color:var(--run)}
+  .toolbar .sub{font-size:11px;color:var(--muted-foreground)}.toolbar .spacer{flex:1}
+  .btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--panel-raised);color:var(--foreground);cursor:pointer}
+  .btn svg{width:13px;height:13px}.btn.ghost{background:transparent;color:var(--muted-foreground)}
+  .btn.primary{background:var(--signal);border-color:var(--signal);color:var(--void);font-weight:600}
+  .form{flex:1;overflow:auto;padding:16px;max-width:940px;width:100%}
+  .section{border:1px solid var(--border);border-radius:8px;background:var(--panel);margin-bottom:14px}
+  .section>.shead{display:flex;align-items:center;gap:8px;padding:10px 13px;border-bottom:1px solid var(--border)}
+  .section>.shead .ix{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:var(--panel-raised);color:var(--signal);font-size:11px;font-weight:600}
+  .section>.shead h3{margin:0;font-size:12.5px;font-weight:600}
+  .section>.shead .hint{font-size:11px;color:var(--muted-foreground);margin-left:auto}
+  .sbody{padding:13px}
+  label{display:block;font-size:11px;color:var(--muted-foreground);margin:0 0 5px 1px}
+  .req{color:var(--run)}
+  input,select,textarea{width:100%;background:var(--input);border:1px solid var(--border);border-radius:6px;color:var(--foreground);font-family:var(--mono);font-size:12px;padding:7px 9px;outline:none}
+  select{font-family:var(--sans);cursor:pointer}
+  input:focus,select:focus,textarea:focus{border-color:var(--signal)}
+  .help{font-size:10.5px;color:var(--muted-foreground);margin-top:5px}
+  code{font-family:var(--mono);background:var(--panel-raised);padding:1px 5px;border-radius:4px;color:var(--ok);font-size:11px}
+  .grip{display:inline-flex;align-items:center;justify-content:center;width:22px;color:var(--muted-foreground);cursor:grab}.grip svg{width:14px;height:14px}
+  .stage-row{display:grid;grid-template-columns:22px 1fr 110px 1fr 32px;gap:8px;align-items:end;margin-bottom:9px}
+  .stage-row .grip{align-self:end;height:34px}
+  .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--panel-raised);color:var(--muted-foreground);cursor:pointer}
+  .iconbtn:hover{color:#f87171;border-color:rgba(248,113,113,.4)}.iconbtn svg{width:14px;height:14px}
+  .addbtn{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--signal);background:transparent;border:1px dashed var(--border);border-radius:6px;padding:7px 11px;cursor:pointer;justify-content:center}
+  .addbtn svg{width:13px;height:13px}
+  .addrow{display:flex;gap:8px;margin-top:3px}.addrow .addbtn{flex:1}
+  .step{display:flex;border:1px solid var(--border);border-radius:8px;background:var(--panel-raised);margin-bottom:11px;overflow:hidden}
+  .step.drag{opacity:.4}.step.over{outline:2px dashed var(--signal);outline-offset:-2px}
+  .step .grip{background:rgba(0,0,0,.15);border-right:1px solid var(--border)}
+  .step-main{flex:1;min-width:0}
+  .step-head{display:flex;align-items:center;gap:8px;padding:9px 11px}
+  .kind{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 7px;border-radius:5px}
+  .kind.req{color:var(--signal);background:rgba(139,124,255,.12)}.kind.slp{color:var(--run);background:rgba(245,165,36,.12)}
+  .kind svg{width:12px;height:12px}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .seg button{font-family:var(--sans);font-size:11px;padding:5px 10px;background:transparent;border:none;color:var(--muted-foreground);cursor:pointer}
+  .seg button.on{background:var(--signal);color:var(--void);font-weight:600}
+  .method{width:104px}
+  .chev{margin-left:auto;color:var(--muted-foreground);cursor:pointer}.chev svg{width:15px;height:15px}
+  .step-body{padding:11px;border-top:1px solid var(--border)}
+  .subsec{border:1px solid var(--border);border-radius:7px;margin-bottom:10px;background:var(--panel)}.subsec:last-child{margin-bottom:0}
+  .sub-head{display:flex;align-items:center;gap:7px;padding:8px 10px}
+  .sub-head .lbl{font-size:11.5px;font-weight:600}
+  .sub-head .badge{font-size:10px;color:var(--muted-foreground);background:var(--panel-raised);border:1px solid var(--border);border-radius:20px;padding:1px 8px;margin-left:auto}
+  .sub-head .dice{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--run)}.sub-head .dice svg{width:12px;height:12px}
+  .sub-body{padding:0 10px 10px}
+  .sample{display:flex;gap:8px;align-items:flex-start;margin-bottom:7px}
+  .sample .num{font-family:var(--mono);font-size:10px;color:var(--muted-foreground);padding-top:8px;min-width:14px}
+  .sample textarea{min-height:44px;resize:vertical;line-height:1.45}
+  .kvgrid{flex:1;display:flex;flex-direction:column;gap:5px}
+  .kv{display:grid;grid-template-columns:1fr 1.4fr 28px;gap:6px}.kv .iconbtn{width:28px;height:30px}
+  .mini-add{font-size:10.5px;color:var(--muted-foreground);background:transparent;border:none;cursor:pointer;padding:2px 0;display:block}
+  .mini-add:hover{color:var(--signal)}
+  .sleep-inline{display:grid;grid-template-columns:1fr 130px 32px;gap:8px;align-items:center;flex:1}
+  .footer-note{font-size:10.5px;color:var(--muted-foreground);text-align:center;padding:8px 0 18px}
+  /* code modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  .overlay.open{display:flex}
+  .modal{width:760px;max-width:92vw;max-height:84vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .modal-head{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--border)}
+  .modal-head b{font-size:13px}.modal-head .sub{font-size:11px;color:var(--muted-foreground)}
+  .modal-head .x{margin-left:auto;cursor:pointer;color:var(--muted-foreground)}
+  .modal pre{margin:0;flex:1;overflow:auto;padding:14px;background:#0a0e14;font-family:var(--mono);font-size:12px;line-height:1.55;color:#a8b0c4}
+  .modal pre .cmt{color:#5c6678}.modal pre .kw{color:#8b7cff}.modal pre .str{color:#3ddc97}.modal pre .fn{color:#f5a524}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel-raised);border:1px solid var(--border);border-radius:8px;padding:9px 14px;font-size:12px;color:var(--foreground);box-shadow:0 4px 18px rgba(0,0,0,.4);display:none;z-index:60}
+  .toast.show{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <span class="logo">k6 <b>studio</b></span><span class="ns">namespace: default</span>
+    <span class="spacer"></span><span class="runners">runners <b>0</b>/1</span>
+  </div>
+  <div class="body">
+    <div class="side">
+      <div class="ttl">Scripts</div>
+      <div class="frow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>checkout.js</div>
+      <div class="frow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>smoke.js</div>
+    </div>
+    <div class="main">
+      <div class="tabs">
+        <div class="tab active new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h1.45l1.62 1.97"/></svg>Builder</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>Editor</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Live dashboard</div>
+        <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>Test history</div>
+      </div>
+      <div class="toolbar">
+        <span class="title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h1.45l1.62 1.97"/></svg>Script Builder</span>
+        <span class="sub">— compose a k6 script from a form, no code required</span>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
+        <button class="btn primary" id="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>Open in Editor</button>
+      </div>
+      <div class="form" id="form"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head"><b>Editor</b><span class="sub">untitled · unsaved buffer — this is what "Open in Editor" loads</span><span class="x" id="closeModal">✕</span></div>
+    <pre id="code"></pre>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const ICON = {
+  grip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+  dice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/></svg>',
+  api:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3 8 21"/><path d="M16 3l-2 18"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg>',
+  chevD:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>'
+};
+const UNITS = [['s','seconds'],['m','minutes'],['h','hours']];
+
+function initial(){return {
+  host:'https://example.com',
+  stages:[{duration:'30',unit:'m',target:'50'},{duration:'2',unit:'m',target:'50'}],
+  thresholds:[{metric:'http_req_duration',condition:'p(95)<500'},{metric:'http_req_failed',condition:'rate<0.01'}],
+  steps:[
+    {type:'request',reqType:'rest',collapsed:false,method:'POST',path:'/api/v1/users',
+      bodies:['{ "name": "Alice", "plan": "pro" }','{ "name": "Bob", "plan": "free" }'],
+      headerSets:[[{k:'Content-Type',v:'application/json'}]],
+      querySets:[[{k:'page',v:'1'}]]},
+    {type:'sleep',duration:'1',unit:'s'},
+    {type:'request',reqType:'graphql',collapsed:false,path:'/graphql',
+      query:'query Users($limit: Int!) {\n  users(limit: $limit) { id name }\n}',
+      variables:['{ "limit": 10 }','{ "limit": 50 }'],
+      headerSets:[[{k:'Authorization',v:'Bearer TOKEN'}]]}
+  ]
+};}
+let S = initial();
+const form = document.getElementById('form');
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function kvRows(rows,path){
+  return rows.map((r,i)=>`<div class="kv">
+    <input data-p="${path}.${i}.k" value="${esc(r.k)}" placeholder="key"/>
+    <input data-p="${path}.${i}.v" value="${esc(r.v)}" placeholder="value"/>
+    <button class="iconbtn" data-act="delkv" data-p="${path}" data-i="${i}">${ICON.x}</button>
+  </div>`).join('');
+}
+function sampleSet({title,sets,path,addLabel,addRowLabel}){
+  return `<div class="subsec">
+    <div class="sub-head"><span class="lbl">${title}</span>
+      <span class="dice">${ICON.dice}1 set picked / iteration</span>
+      <span class="badge">${sets.length} sample${sets.length===1?'':'s'}</span></div>
+    <div class="sub-body">
+      ${sets.map((set,si)=>`<div class="sample"><span class="num">${si+1}</span>
+        <div class="kvgrid">${kvRows(set,path+'.'+si)}
+          <button class="mini-add" data-act="addkv" data-p="${path}.${si}">+ ${addRowLabel}</button></div>
+        ${sets.length>1?`<button class="iconbtn" data-act="delset" data-p="${path}" data-i="${si}">${ICON.x}</button>`:''}
+      </div>`).join('')}
+      <button class="mini-add" data-act="addset" data-p="${path}">+ ${addLabel}</button>
+    </div></div>`;
+}
+function payloadSamples({title,arr,path,addLabel}){
+  return `<div class="subsec">
+    <div class="sub-head"><span class="lbl">${title}</span>
+      <span class="dice">${ICON.dice}1 picked / iteration</span>
+      <span class="badge">${arr.length} sample${arr.length===1?'':'s'}</span></div>
+    <div class="sub-body">
+      ${arr.map((val,i)=>`<div class="sample"><span class="num">${i+1}</span>
+        <textarea data-p="${path}.${i}">${esc(val)}</textarea>
+        ${arr.length>1?`<button class="iconbtn" data-act="delpayload" data-p="${path}" data-i="${i}">${ICON.x}</button>`:''}
+      </div>`).join('')}
+      <button class="mini-add" data-act="addpayload" data-p="${path}">+ ${addLabel}</button>
+    </div></div>`;
+}
+
+function renderStep(st,i){
+  if(st.type==='sleep'){
+    return `<div class="step" draggable="true" data-i="${i}">
+      <span class="grip">${ICON.grip}</span>
+      <div class="step-main"><div class="step-head">
+        <span class="kind slp">${ICON.clock}Sleep</span>
+        <div class="sleep-inline">
+          <input data-p="steps.${i}.duration" value="${esc(st.duration)}"/>
+          <select data-p="steps.${i}.unit">${UNITS.map(u=>`<option value="${u[0]}"${st.unit===u[0]?' selected':''}>${u[1]}</option>`).join('')}</select>
+          <button class="iconbtn" data-act="delstep" data-i="${i}">${ICON.trash}</button>
+        </div></div></div></div>`;
+  }
+  const head=`<div class="step-head">
+    <span class="kind req">${ICON.api}API request</span>
+    <span class="seg">
+      <button data-act="reqtype" data-i="${i}" data-v="rest" class="${st.reqType==='rest'?'on':''}">REST</button>
+      <button data-act="reqtype" data-i="${i}" data-v="graphql" class="${st.reqType==='graphql'?'on':''}">GraphQL</button>
+    </span>
+    <span class="chev" data-act="collapse" data-i="${i}">${st.collapsed?ICON.chevR:ICON.chevD}</span>
+    <button class="iconbtn" data-act="delstep" data-i="${i}">${ICON.trash}</button></div>`;
+  if(st.collapsed){
+    const lbl = st.reqType==='rest' ? `${st.method} ${st.path}` : `GraphQL ${st.path}`;
+    return `<div class="step" draggable="true" data-i="${i}"><span class="grip">${ICON.grip}</span>
+      <div class="step-main">${head}<div style="padding:0 11px 10px;font-family:var(--mono);font-size:11px;color:var(--muted-foreground)">${esc(lbl)}</div></div></div>`;
+  }
+  let body;
+  if(st.reqType==='rest'){
+    body=`<div class="step-body">
+      <div class="stage-row" style="grid-template-columns:104px 1fr;margin-bottom:11px">
+        <div><label>Method</label><select class="method" data-p="steps.${i}.method">${['GET','POST','PUT','PATCH','DELETE'].map(m=>`<option${st.method===m?' selected':''}>${m}</option>`).join('')}</select></div>
+        <div><label>Path</label><input data-p="steps.${i}.path" value="${esc(st.path)}"/></div></div>
+      ${payloadSamples({title:'Body',arr:st.bodies,path:`steps.${i}.bodies`,addLabel:'add body sample'})}
+      ${sampleSet({title:'Headers',sets:st.headerSets,path:`steps.${i}.headerSets`,addLabel:'add header sample (set)',addRowLabel:'add header to this set'})}
+      ${sampleSet({title:'Query params',sets:st.querySets,path:`steps.${i}.querySets`,addLabel:'add query sample (set)',addRowLabel:'add param to this set'})}
+    </div>`;
+  } else {
+    body=`<div class="step-body">
+      <div style="margin-bottom:11px"><label>Endpoint path (POST)</label><input data-p="steps.${i}.path" value="${esc(st.path)}"/></div>
+      <div style="margin-bottom:11px"><label>Query / mutation</label><textarea style="min-height:78px" data-p="steps.${i}.query">${esc(st.query)}</textarea></div>
+      ${payloadSamples({title:'Variables',arr:st.variables,path:`steps.${i}.variables`,addLabel:'add variables sample'})}
+      ${sampleSet({title:'Headers',sets:st.headerSets,path:`steps.${i}.headerSets`,addLabel:'add header sample (set)',addRowLabel:'add header to this set'})}
+    </div>`;
+  }
+  return `<div class="step" draggable="true" data-i="${i}"><span class="grip">${ICON.grip}</span><div class="step-main">${head}${body}</div></div>`;
+}
+
+function render(){
+  form.innerHTML = `
+  <div class="section"><div class="shead"><span class="ix">1</span><h3>Target</h3><span class="hint">where requests go</span></div>
+    <div class="sbody"><label>Host <span class="req">*</span></label>
+      <input data-p="host" value="${esc(S.host)}"/>
+      <div class="help">Protocol optional — defaults to <code>http://</code> when omitted.</div></div></div>
+
+  <div class="section"><div class="shead"><span class="ix">2</span><h3>Load profile</h3><span class="hint">drag to reorder · <code>options.stages</code></span></div>
+    <div class="sbody">
+      ${S.stages.map((s,i)=>`<div class="stage-row" draggable="true" data-stage="${i}">
+        <span class="grip">${ICON.grip}</span>
+        <div>${i===0?'<label>Duration</label>':''}<input data-p="stages.${i}.duration" value="${esc(s.duration)}"/></div>
+        <div>${i===0?'<label>Unit</label>':''}<select data-p="stages.${i}.unit">${UNITS.map(u=>`<option value="${u[0]}"${s.unit===u[0]?' selected':''}>${u[1]}</option>`).join('')}</select></div>
+        <div>${i===0?'<label>Target VUs</label>':''}<input data-p="stages.${i}.target" value="${esc(s.target)}"/></div>
+        ${S.stages.length>1?`<button class="iconbtn" data-act="delstage" data-i="${i}">${ICON.trash}</button>`:'<span></span>'}
+      </div>`).join('')}
+      <div class="addrow"><button class="addbtn" data-act="addstage">${ICON.plus}Add stage</button></div>
+    </div></div>
+
+  <div class="section"><div class="shead"><span class="ix">3</span><h3>Thresholds</h3><span class="hint">pass/fail · <code>options.thresholds</code></span></div>
+    <div class="sbody">
+      ${S.thresholds.map((t,i)=>`<div class="stage-row" style="grid-template-columns:1fr 1.4fr 32px">
+        <div>${i===0?'<label>Metric</label>':''}<select data-p="thresholds.${i}.metric">${['http_req_duration','http_req_failed','http_reqs','iteration_duration','checks'].map(m=>`<option${t.metric===m?' selected':''}>${m}</option>`).join('')}</select></div>
+        <div>${i===0?'<label>Condition</label>':''}<input data-p="thresholds.${i}.condition" value="${esc(t.condition)}"/></div>
+        <button class="iconbtn" data-act="delthreshold" data-i="${i}">${ICON.trash}</button>
+      </div>`).join('')}
+      <div class="addrow"><button class="addbtn" data-act="addthreshold">${ICON.plus}Add threshold</button></div>
+    </div></div>
+
+  <div class="section"><div class="shead"><span class="ix">4</span><h3>Scenario steps</h3><span class="hint">drag to reorder · run top → bottom each iteration</span></div>
+    <div class="sbody" id="steplist">
+      ${S.steps.map((st,i)=>renderStep(st,i)).join('')}
+      <div class="addrow">
+        <button class="addbtn" data-act="addreq">${ICON.plus}Add API request</button>
+        <button class="addbtn" data-act="addsleep">${ICON.clock}Add sleep</button>
+      </div>
+    </div></div>
+
+  <div class="footer-note">Generated script starts with <code>// Built by Script Builder</code> · nothing is saved until you Open in Editor and save the file</div>`;
+}
+
+// ---- state helpers ----
+function setPath(p,val){const ks=p.split('.');let o=S;for(let i=0;i<ks.length-1;i++)o=o[ks[i]];o[ks[ks.length-1]]=val;}
+function getPath(p){const ks=p.split('.');let o=S;for(const k of ks)o=o[k];return o;}
+
+form.addEventListener('input',e=>{const p=e.target.getAttribute('data-p');if(p)setPath(p,e.target.value);});
+form.addEventListener('change',e=>{const p=e.target.getAttribute('data-p');if(p){setPath(p,e.target.value);}});
+
+form.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const act=b.getAttribute('data-act');const i=+b.getAttribute('data-i');const p=b.getAttribute('data-p');
+  switch(act){
+    case 'addstage':S.stages.push({duration:'1',unit:'m',target:'10'});break;
+    case 'delstage':S.stages.splice(i,1);break;
+    case 'addthreshold':S.thresholds.push({metric:'http_req_duration',condition:'p(95)<500'});break;
+    case 'delthreshold':S.thresholds.splice(i,1);break;
+    case 'addreq':S.steps.push({type:'request',reqType:'rest',collapsed:false,method:'GET',path:'/api/v1/resource',bodies:[''],headerSets:[[{k:'',v:''}]],querySets:[[{k:'',v:''}]]});break;
+    case 'addsleep':S.steps.push({type:'sleep',duration:'1',unit:'s'});break;
+    case 'delstep':S.steps.splice(i,1);break;
+    case 'collapse':S.steps[i].collapsed=!S.steps[i].collapsed;break;
+    case 'reqtype':{const st=S.steps[i];st.reqType=b.getAttribute('data-v');
+      if(st.reqType==='graphql'){if(st.query===undefined)st.query='query {\n  __typename\n}';if(st.variables===undefined)st.variables=['{}'];}
+      else {if(st.method===undefined)st.method='GET';if(st.bodies===undefined)st.bodies=[''];if(st.querySets===undefined)st.querySets=[[{k:'',v:''}]];}
+      break;}
+    case 'addpayload':getPath(p).push('');break;
+    case 'delpayload':getPath(p).splice(i,1);break;
+    case 'addset':getPath(p).push([{k:'',v:''}]);break;
+    case 'delset':getPath(p).splice(i,1);break;
+    case 'addkv':getPath(p).push({k:'',v:''});break;
+    case 'delkv':getPath(p).splice(i,1);break;
+    default:return;
+  }
+  render();
+});
+
+// ---- drag reorder (steps + stages) ----
+let dragKind=null,dragIdx=null;
+form.addEventListener('dragstart',e=>{const s=e.target.closest('[data-i],[data-stage]');if(!e.target.closest('.step,.stage-row'))return;
+  const step=e.target.closest('.step');const stage=e.target.closest('.stage-row');
+  if(step){dragKind='step';dragIdx=+step.getAttribute('data-i');step.classList.add('drag');}
+  else if(stage){dragKind='stage';dragIdx=+stage.getAttribute('data-stage');}
+});
+form.addEventListener('dragover',e=>{e.preventDefault();});
+form.addEventListener('drop',e=>{e.preventDefault();
+  if(dragKind==='step'){const t=e.target.closest('.step');if(!t)return;const ti=+t.getAttribute('data-i');move(S.steps,dragIdx,ti);}
+  if(dragKind==='stage'){const t=e.target.closest('.stage-row');if(!t)return;const ti=+t.getAttribute('data-stage');move(S.stages,dragIdx,ti);}
+  dragKind=null;dragIdx=null;render();
+});
+function move(arr,from,to){if(from===to)return;const[x]=arr.splice(from,1);arr.splice(to,0,x);}
+
+// ---- generator ----
+function normHost(h){h=h.trim();return /^https?:\/\//i.test(h)?h:'http://'+h;}
+function dur(v,u){return (v||'0')+u;}
+function tryJson(s){try{JSON.parse(s);return true;}catch(_){return false;}}
+function obj(rows){const o={};rows.forEach(r=>{if(r.k!=='')o[r.k]=r.v;});return o;}
+function jsObj(o){return '{ '+Object.entries(o).map(([k,v])=>`${/^[A-Za-z_$][\w$]*$/.test(k)?k:JSON.stringify(k)}: ${JSON.stringify(v)}`).join(', ')+' }';}
+
+function generate(){
+  let usePick=false,useQs=false;const lines=[];const decls=[];const calls=[];
+  S.steps.forEach((st,i)=>{
+    if(st.type==='sleep'){const sec=secOf(st.duration,st.unit);if(sec>0)calls.push(`  // step ${i} — sleep`,`  sleep(${sec});`,'');return;}
+    if(st.reqType==='rest'){
+      const hasBody=['POST','PUT','PATCH'].includes(st.method)&&st.bodies.some(b=>b.trim()!=='');
+      const bodies=st.bodies.filter(b=>b.trim()!=='');
+      const hsets=st.headerSets.map(obj).filter(o=>Object.keys(o).length);
+      const qsets=st.querySets.map(obj).filter(o=>Object.keys(o).length);
+      if(hasBody){usePick=usePick||bodies.length>1;decls.push(`const bodies${i} = [${bodies.map(b=>tryJson(b)?`JSON.stringify(${b.trim()})`:JSON.stringify(b)).join(', ')}];`);}
+      if(hsets.length){usePick=usePick||hsets.length>1;decls.push(`const headerSets${i} = [${hsets.map(jsObj).join(', ')}];`);}
+      if(qsets.length){usePick=usePick||qsets.length>1;useQs=true;decls.push(`const querySets${i} = [${qsets.map(jsObj).join(', ')}];`);}
+      const c=[`  // step ${i} — REST ${st.method} ${st.path}`,`  group(${JSON.stringify(st.method+' '+st.path)}, () => {`];
+      let urlExpr='`${BASE_URL}'+st.path+'`';
+      if(qsets.length){c.push(`    const query = qs(${pick('querySets'+i,qsets.length)});`);urlExpr='`${BASE_URL}'+st.path+'` + (query ? `?${query}` : "")';}
+      c.push(`    const url = ${urlExpr};`);
+      const args=['url'];
+      args.push(hasBody?pick('bodies'+i,bodies.length):'null');
+      const params = hsets.length?`{ headers: ${pick('headerSets'+i,hsets.length)} }`:null;
+      if(params)args.push(params);
+      c.push(`    http.${st.method.toLowerCase()}(${args.join(', ')});`,`  });`,'');
+      calls.push(...c);
+    } else {
+      const vars=st.variables.filter(v=>v.trim()!=='');
+      const hsets=st.headerSets.map(obj).filter(o=>Object.keys(o).length);
+      decls.push(`const gqlQuery${i} = ${JSON.stringify(st.query)};`);
+      if(vars.length){usePick=usePick||vars.length>1;decls.push(`const gqlVars${i} = [${vars.map(v=>tryJson(v)?v.trim():JSON.stringify(v)).join(', ')}];`);}
+      if(hsets.length){usePick=usePick||hsets.length>1;decls.push(`const headerSets${i} = [${hsets.map(jsObj).join(', ')}];`);}
+      const c=[`  // step ${i} — GraphQL ${st.path}`,`  group(${JSON.stringify('GraphQL '+st.path)}, () => {`,
+        `    const body = JSON.stringify({ query: gqlQuery${i}, variables: ${vars.length?pick('gqlVars'+i,vars.length):'{}'} });`,
+        `    const headers = { "Content-Type": "application/json"${hsets.length?`, ...${pick('headerSets'+i,hsets.length)}`:''} };`,
+        '    http.post(`${BASE_URL}'+st.path+'`, body, { headers });','  });',''];
+      calls.push(...c);
+    }
+  });
+  const imports=['import http from "k6/http";','import { group, sleep } from "k6";'];
+  lines.push('// Built by Script Builder','',...imports,'',`const BASE_URL = ${JSON.stringify(normHost(S.host))};`,'');
+  lines.push('export const options = {');
+  lines.push('  stages: ['+'\n'+S.stages.map(s=>`    { duration: ${JSON.stringify(dur(s.duration,s.unit))}, target: ${(+s.target)||0} },`).join('\n')+'\n  ],');
+  const th=S.thresholds.filter(t=>t.condition.trim()!=='');
+  if(th.length){const m={};th.forEach(t=>{(m[t.metric]=m[t.metric]||[]).push(t.condition.trim());});
+    lines.push('  thresholds: {');Object.entries(m).forEach(([k,v])=>lines.push(`    ${k}: [${v.map(x=>JSON.stringify(x)).join(', ')}],`));lines.push('  },');}
+  lines.push('};','');
+  if(usePick)lines.push('function pick(arr) {','  return arr[Math.floor(Math.random() * arr.length)];','}','');
+  if(useQs)lines.push('function qs(params) {','  return Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");','}','');
+  if(decls.length)lines.push(...decls,'');
+  lines.push('export default function () {');
+  lines.push(...(calls.length?calls:['  // no steps yet']));
+  lines.push('}');
+  return lines.join('\n').replace(/\n{3,}/g,'\n\n');
+}
+function secOf(v,u){const n=parseFloat(v)||0;return u==='m'?n*60:u==='h'?n*3600:n;}
+function pick(name,n){return n>1?`pick(${name})`:`${name}[0]`;}
+
+function highlight(code){
+  return esc(code)
+    .replace(/(\/\/[^\n]*)/g,'<span class="cmt">$1</span>')
+    .replace(/(&quot;|&#39;|`)(?:[^`"&]|&(?!quot;)|&#(?!39;))*?\1/g,m=>`<span class="str">${m}</span>`)
+    .replace(/\b(import|from|export|default|const|function|return|new)\b/g,'<span class="kw">$1</span>');
+}
+// ---- toolbar ----
+const overlay=document.getElementById('overlay');
+document.getElementById('open').onclick=()=>{document.getElementById('code').innerHTML=highlight(generate());overlay.classList.add('open');};
+document.getElementById('closeModal').onclick=()=>overlay.classList.remove('open');
+overlay.onclick=e=>{if(e.target===overlay)overlay.classList.remove('open');};
+document.getElementById('reset').onclick=()=>{S=initial();render();toast('Form reset');};
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600);}
+
+render();
+</script>
+</body>
+</html>

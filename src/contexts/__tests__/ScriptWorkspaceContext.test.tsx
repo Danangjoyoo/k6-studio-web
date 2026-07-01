@@ -580,4 +580,74 @@ describe("ScriptWorkspaceContext", () => {
       "[error] could not cancel run"
     );
   });
+
+  it("applies builder content as a draft when no script is selected", () => {
+    const onRequestEditorView = jest.fn();
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => (
+        <ScriptWorkspaceProvider
+          namespace="default"
+          selectedFile={null}
+          onSelectFile={jest.fn()}
+          onRequestEditorView={onRequestEditorView}
+        >
+          {children}
+        </ScriptWorkspaceProvider>
+      ),
+    });
+
+    expect(result.current.draft).toBeNull();
+
+    act(() => {
+      result.current.applyBuilderToEditor("// code", "built.ts");
+    });
+
+    expect(onRequestEditorView).toHaveBeenCalledTimes(1);
+    expect(result.current.draft).toEqual({
+      content: "// code",
+      suggestedName: "built.ts",
+    });
+    expect(result.current.builderAppliedContent).toBeNull();
+
+    act(() => {
+      result.current.clearDraft();
+    });
+
+    expect(result.current.draft).toBeNull();
+  });
+
+  it("applies builder content as an editor override when a script is selected", () => {
+    const onRequestEditorView = jest.fn();
+    const { result } = renderHook(() => useScriptWorkspace(), {
+      wrapper: ({ children }) => (
+        <ScriptWorkspaceProvider
+          namespace="default"
+          selectedFile="plain.ts"
+          onSelectFile={jest.fn()}
+          onRequestEditorView={onRequestEditorView}
+        >
+          {children}
+        </ScriptWorkspaceProvider>
+      ),
+    });
+
+    act(() => {
+      result.current.applyBuilderToEditor("// generated", "built.ts");
+    });
+
+    expect(onRequestEditorView).toHaveBeenCalledTimes(1);
+    expect(result.current.draft).toBeNull();
+    expect(result.current.builderAppliedContent).toEqual({
+      content: "// generated",
+      filename: "plain.ts",
+      revision: 1,
+      suggestedName: "built.ts",
+    });
+
+    act(() => {
+      result.current.clearBuilderAppliedContent(1);
+    });
+
+    expect(result.current.builderAppliedContent).toBeNull();
+  });
 });

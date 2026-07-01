@@ -8,6 +8,18 @@ import ScriptEditor from "@/components/editor/ScriptEditor";
 
 const mockWorkspace = {
   namespace: "team-a",
+  selectedFile: null as string | null,
+  setSelectedFile: jest.fn(),
+  draft: null as { content: string; suggestedName: string } | null,
+  builderAppliedContent: null as {
+    content: string;
+    filename: string;
+    revision: number;
+    suggestedName: string;
+  } | null,
+  clearBuilderAppliedContent: jest.fn(),
+  clearDraft: jest.fn(),
+  applyBuilderToEditor: jest.fn(),
   getSession: () => ({
     lines: [],
     isRunning: false,
@@ -67,20 +79,88 @@ jest.mock("@/contexts/ScriptWorkspaceContext", () => ({
 
 describe("EditorTab", () => {
   beforeEach(() => {
+    (ScriptEditor as unknown as jest.Mock).mockClear();
     mockWorkspace.namespace = "team-a";
+    mockWorkspace.selectedFile = null;
+    mockWorkspace.draft = null;
     mockWorkspace.globalRunning = false;
     mockWorkspace.globalRunningNamespace = null;
     mockWorkspace.globalRunningScript = null;
     mockWorkspace.globalRuns = [];
+    mockWorkspace.builderAppliedContent = null;
     mockWorkspace.activeRunners = 0;
     mockWorkspace.runnerCapacity = 1;
     mockWorkspace.runScript.mockReset();
     mockWorkspace.cancelRun.mockReset();
+    mockWorkspace.setSelectedFile.mockReset();
+    mockWorkspace.clearDraft.mockReset();
+    mockWorkspace.clearBuilderAppliedContent.mockReset();
+    mockWorkspace.applyBuilderToEditor.mockReset();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "built.ts" }),
+    }) as unknown as typeof fetch;
   });
 
   it("renders placeholder when no file is selected", () => {
     render(<EditorTab filename={null} />);
     expect(screen.getByText(/select a file/i)).toBeInTheDocument();
+  });
+
+  it("renders a draft as an unsaved buffer when no file is selected", () => {
+    mockWorkspace.draft = {
+      content: "// Built by Script Builder",
+      suggestedName: "built.ts",
+    };
+
+    render(<EditorTab filename={null} />);
+
+    expect(screen.getByText(/untitled/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /run test/i })).toBeDisabled();
+    expect(ScriptEditor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: undefined,
+        initialContent: "// Built by Script Builder",
+      }),
+      undefined
+    );
+  });
+
+  it("saves a draft through the existing files API and selects it", async () => {
+    mockWorkspace.draft = {
+      content: "// Built by Script Builder",
+      suggestedName: "built",
+    };
+    const editorMock = ScriptEditor as unknown as jest.Mock;
+    editorMock.mockImplementationOnce((_props, ref) => {
+      if (ref && typeof ref === "object") {
+        ref.current = {
+          save: jest.fn(),
+          getContent: () => "// generated",
+        };
+      }
+      return <div data-testid="editor" />;
+    });
+
+    render(<EditorTab filename={null} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /save script/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save script$/i }));
+
+    await screen.findByTestId("editor");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/k6/api/files",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          namespace: "team-a",
+          name: "built.ts",
+          content: "// Built by Script Builder",
+        }),
+      })
+    );
+    expect(mockWorkspace.clearDraft).toHaveBeenCalled();
+    expect(mockWorkspace.setSelectedFile).toHaveBeenCalledWith("built.ts");
   });
 
   it("renders editor and terminal when a file is selected", () => {
@@ -91,6 +171,26 @@ describe("EditorTab", () => {
       expect.objectContaining({
         namespace: "team-a",
         filename: "script.js",
+      }),
+      undefined
+    );
+  });
+
+  it("passes matching builder-applied content to the selected file editor", () => {
+    mockWorkspace.builderAppliedContent = {
+      content: "// generated",
+      filename: "script.js",
+      revision: 3,
+      suggestedName: "built-by-builder.ts",
+    };
+
+    render(<EditorTab filename="script.js" />);
+
+    expect(ScriptEditor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: "script.js",
+        appliedContent: mockWorkspace.builderAppliedContent,
+        onAppliedContentConsumed: mockWorkspace.clearBuilderAppliedContent,
       }),
       undefined
     );

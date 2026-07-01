@@ -21,6 +21,18 @@ export interface ScriptSession {
   lastReportName: string | null;
 }
 
+export interface ScriptDraft {
+  content: string;
+  suggestedName: string;
+}
+
+export interface BuilderAppliedContent {
+  content: string;
+  filename: string;
+  revision: number;
+  suggestedName: string;
+}
+
 const EMPTY_SESSION: ScriptSession = {
   lines: [],
   isRunning: false,
@@ -32,6 +44,11 @@ interface ScriptWorkspaceValue {
   namespace: string;
   selectedFile: string | null;
   setSelectedFile: (name: string) => void;
+  draft: ScriptDraft | null;
+  builderAppliedContent: BuilderAppliedContent | null;
+  applyBuilderToEditor: (content: string, suggestedName: string) => void;
+  clearDraft: () => void;
+  clearBuilderAppliedContent: (revision?: number) => void;
   getSession: (filename: string) => ScriptSession;
   runScript: (filename: string) => Promise<void>;
   cancelRun: (runId: string) => Promise<void>;
@@ -78,13 +95,18 @@ export function ScriptWorkspaceProvider({
   namespace = DEFAULT_NAMESPACE,
   selectedFile,
   onSelectFile,
+  onRequestEditorView,
 }: {
   children: ReactNode;
   namespace?: string;
   selectedFile: string | null;
   onSelectFile: (name: string) => void;
+  onRequestEditorView?: () => void;
 }) {
   const [sessions, setSessions] = useState<Record<string, ScriptSession>>({});
+  const [draft, setDraft] = useState<ScriptDraft | null>(null);
+  const [builderAppliedContent, setBuilderAppliedContent] =
+    useState<BuilderAppliedContent | null>(null);
   const [runningScript, setRunningScript] = useState<string | null>(null);
   const [runEpoch, setRunEpoch] = useState(0);
   const [globalRunning, setGlobalRunning] = useState(false);
@@ -99,6 +121,7 @@ export function ScriptWorkspaceProvider({
   const [globalRuns, setGlobalRuns] = useState<ActiveRun[]>([]);
   const abortRefs = useRef<Record<string, AbortController>>({});
   const outputAbortRefs = useRef<Record<string, AbortController>>({});
+  const builderApplyRevisionRef = useRef(0);
   const optimisticRunsRef = useRef<Record<string, ActiveRun>>({});
   const completedRunIdsRef = useRef<Set<string>>(new Set());
   const visibleRunsRef = useRef<ActiveRun[]>([]);
@@ -245,6 +268,40 @@ export function ScriptWorkspaceProvider({
       sessions[sessionKey(namespace, filename)] ?? EMPTY_SESSION,
     [namespace, sessions]
   );
+
+  const applyBuilderToEditor = useCallback(
+    (content: string, suggestedName: string) => {
+      if (selectedFile) {
+        builderApplyRevisionRef.current += 1;
+        setDraft(null);
+        setBuilderAppliedContent({
+          content,
+          filename: selectedFile,
+          revision: builderApplyRevisionRef.current,
+          suggestedName,
+        });
+      } else {
+        setBuilderAppliedContent(null);
+        setDraft({ content, suggestedName });
+      }
+      onRequestEditorView?.();
+    },
+    [onRequestEditorView, selectedFile]
+  );
+
+  const clearDraft = useCallback(() => {
+    setDraft(null);
+  }, []);
+
+  const clearBuilderAppliedContent = useCallback((revision?: number) => {
+    setBuilderAppliedContent((current) => {
+      if (!current) return null;
+      if (revision !== undefined && current.revision !== revision) {
+        return current;
+      }
+      return null;
+    });
+  }, []);
 
   useEffect(() => {
     const selectedRun =
@@ -457,6 +514,11 @@ export function ScriptWorkspaceProvider({
       namespace,
       selectedFile,
       setSelectedFile: onSelectFile,
+      draft,
+      builderAppliedContent,
+      applyBuilderToEditor,
+      clearDraft,
+      clearBuilderAppliedContent,
       getSession,
       runScript,
       cancelRun,
@@ -473,6 +535,11 @@ export function ScriptWorkspaceProvider({
       namespace,
       selectedFile,
       onSelectFile,
+      draft,
+      builderAppliedContent,
+      applyBuilderToEditor,
+      clearDraft,
+      clearBuilderAppliedContent,
       getSession,
       runScript,
       cancelRun,

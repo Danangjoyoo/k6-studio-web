@@ -18,15 +18,30 @@ export interface ScriptEditorHandle {
   getContent: () => string;
 }
 
+export interface AppliedEditorContent {
+  content: string;
+  revision: number;
+}
+
 export interface ScriptEditorProps {
-  filename: string;
+  filename?: string;
+  initialContent?: string;
+  appliedContent?: AppliedEditorContent;
   namespace?: string;
+  onAppliedContentConsumed?: (revision: number) => void;
   onSaveStatusChange?: (status: "saved" | "saving" | "unsaved") => void;
 }
 
 const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
   function ScriptEditor(
-    { filename, namespace = DEFAULT_NAMESPACE, onSaveStatusChange },
+    {
+      filename,
+      initialContent,
+      appliedContent,
+      namespace = DEFAULT_NAMESPACE,
+      onAppliedContentConsumed,
+      onSaveStatusChange,
+    },
     ref
   ) {
     const [content, setContent] = useState("");
@@ -36,9 +51,18 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+      if (!filename) {
+        const seed = initialContent ?? "";
+        setContent(seed);
+        contentRef.current = seed;
+        onSaveStatusChange?.("unsaved");
+        return;
+      }
+
+      const currentFilename = filename;
       async function load() {
         const requestId = ++loadRequestIdRef.current;
-        const res = await fetch(fileUrl(filename, namespace));
+        const res = await fetch(fileUrl(currentFilename, namespace));
         const data = (await res.json()) as { name: string; content: string };
         if (requestId !== loadRequestIdRef.current) return;
         setContent(data.content);
@@ -46,7 +70,20 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
         onSaveStatusChange?.("saved");
       }
       void load();
-    }, [filename, namespace, onSaveStatusChange]);
+    }, [filename, initialContent, namespace, onSaveStatusChange]);
+
+    useEffect(() => {
+      if (!appliedContent) return;
+      loadRequestIdRef.current += 1;
+      setContent(appliedContent.content);
+      contentRef.current = appliedContent.content;
+      onSaveStatusChange?.("unsaved");
+      onAppliedContentConsumed?.(appliedContent.revision);
+    }, [
+      appliedContent,
+      onAppliedContentConsumed,
+      onSaveStatusChange,
+    ]);
 
     // Trigger Monaco layout() when the container is resized (e.g. panel drag)
     useEffect(() => {
@@ -67,6 +104,7 @@ const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(
     }
 
     async function save() {
+      if (!filename) return;
       onSaveStatusChange?.("saving");
       await fetch(fileUrl(filename, namespace), {
         method: "PUT",

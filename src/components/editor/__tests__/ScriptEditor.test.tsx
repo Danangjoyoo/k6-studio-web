@@ -1,6 +1,7 @@
 /**
  * @jest-environment jsdom
  */
+import "@testing-library/jest-dom";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import ScriptEditor, {
@@ -76,6 +77,15 @@ describe("ScriptEditor", () => {
     (global.fetch as jest.Mock).mockClear();
   });
 
+  it("seeds from initialContent without fetching when filename is empty", () => {
+    const { getByTestId } = render(
+      <ScriptEditor initialContent="// draft body" />
+    );
+
+    expect(getByTestId("monaco")).toHaveValue("// draft body");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("loads content from API on mount", async () => {
     const ref = createRef<ScriptEditorHandle>();
     const { getByTestId } = render(
@@ -125,6 +135,41 @@ describe("ScriptEditor", () => {
         body: JSON.stringify({ content: "// changed" }),
       })
     );
+  });
+
+  it("applies external builder content over a loaded file and marks it unsaved", async () => {
+    const onSaveStatusChange = jest.fn();
+    const onAppliedContentConsumed = jest.fn();
+    const appliedContent = {
+      content: "// generated",
+      filename: "test.ts",
+      revision: 1,
+      suggestedName: "built-by-builder.ts",
+    };
+
+    const { getByTestId, rerender } = render(
+      <ScriptEditor
+        filename="test.ts"
+        onSaveStatusChange={onSaveStatusChange}
+        onAppliedContentConsumed={onAppliedContentConsumed}
+      />
+    );
+    await waitFor(() => {
+      expect(getByTestId("monaco")).toHaveValue("// hello");
+    });
+
+    rerender(
+      <ScriptEditor
+        filename="test.ts"
+        appliedContent={appliedContent}
+        onSaveStatusChange={onSaveStatusChange}
+        onAppliedContentConsumed={onAppliedContentConsumed}
+      />
+    );
+
+    expect(getByTestId("monaco")).toHaveValue("// generated");
+    expect(onSaveStatusChange).toHaveBeenLastCalledWith("unsaved");
+    expect(onAppliedContentConsumed).toHaveBeenCalledWith(1);
   });
 
   it("uses typescript language mode", async () => {

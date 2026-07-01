@@ -22,7 +22,9 @@ import StatusPill from "@/components/layout/StatusPill";
 import ScriptEditor, {
   ScriptEditorHandle,
 } from "@/components/editor/ScriptEditor";
+import SaveDraftDialog from "@/components/editor/SaveDraftDialog";
 import { useScriptWorkspace } from "@/contexts/ScriptWorkspaceContext";
+import { withBasePath } from "@/lib/base-path";
 
 const Terminal = dynamic(() => import("@/components/terminal/Terminal"), {
   ssr: false,
@@ -43,8 +45,14 @@ export default function EditorTab({ filename }: EditorTabProps) {
     "saved" | "saving" | "unsaved"
   >("saved");
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [saveDraftOpen, setSaveDraftOpen] = useState(false);
   const {
     namespace,
+    draft,
+    builderAppliedContent,
+    clearDraft,
+    clearBuilderAppliedContent,
+    setSelectedFile,
     getSession,
     runScript,
     cancelRun,
@@ -53,7 +61,14 @@ export default function EditorTab({ filename }: EditorTabProps) {
     runnerCapacity,
   } = useScriptWorkspace();
 
-  if (!filename) {
+  const isDraft = !filename && draft !== null;
+  const displayName = isDraft ? "untitled · draft" : filename;
+  const appliedContent =
+    filename && builderAppliedContent?.filename === filename
+      ? builderAppliedContent
+      : undefined;
+
+  if (!filename && !draft) {
     return (
       <EmptyState
         icon={Code2}
@@ -63,7 +78,14 @@ export default function EditorTab({ filename }: EditorTabProps) {
     );
   }
 
-  const session = getSession(filename);
+  const session = filename
+    ? getSession(filename)
+    : {
+        lines: [],
+        isRunning: false,
+        lastExitCode: null,
+        lastReportName: null,
+      };
   const selectedActiveRun = globalRuns.find(
     (run) => run.namespace === namespace && run.script === filename
   );
@@ -71,9 +93,21 @@ export default function EditorTab({ filename }: EditorTabProps) {
   const runnersFull = activeRunners >= runnerCapacity && !selectedScriptRunning;
 
   async function handleRun() {
-    if (!filename) return;
+    if (!filename || isDraft) return;
     await editorRef.current?.save();
     await runScript(filename);
+  }
+
+  async function handleSaveDraft(name: string) {
+    const content = editorRef.current?.getContent() ?? draft?.content ?? "";
+    const response = await fetch(withBasePath("/api/files"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ namespace, name, content }),
+    });
+    if (!response.ok) return;
+    clearDraft();
+    setSelectedFile(name);
   }
 
   function handleConfirmCancel() {
@@ -93,7 +127,7 @@ export default function EditorTab({ filename }: EditorTabProps) {
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-panel px-3 py-2">
         <span className="mr-auto truncate font-mono text-xs text-foreground">
-          {filename}
+          {displayName}
         </span>
         <StatusPill variant={statusVariant} />
         <Button
@@ -101,7 +135,13 @@ export default function EditorTab({ filename }: EditorTabProps) {
           size="sm"
           className="h-7 gap-1 px-2 text-xs"
           disabled={saveStatus === "saving"}
-          onClick={() => void editorRef.current?.save()}
+          onClick={() => {
+            if (isDraft) {
+              setSaveDraftOpen(true);
+              return;
+            }
+            void editorRef.current?.save();
+          }}
         >
           <Save className="h-3 w-3" />
           Save script
@@ -109,7 +149,9 @@ export default function EditorTab({ filename }: EditorTabProps) {
         <Button
           size="sm"
           className="h-7 gap-1 bg-run px-2 text-xs text-void shadow-none hover:bg-run/90 hover:shadow-[0_0_12px_rgba(245,165,36,0.25)] active:scale-[0.98] disabled:opacity-50"
-          disabled={session.isRunning || selectedScriptRunning || runnersFull}
+          disabled={
+            isDraft || session.isRunning || selectedScriptRunning || runnersFull
+          }
           onClick={() => void handleRun()}
         >
           <Play className="h-3 w-3" />
@@ -147,6 +189,13 @@ export default function EditorTab({ filename }: EditorTabProps) {
         </DialogContent>
       </Dialog>
 
+      <SaveDraftDialog
+        open={saveDraftOpen}
+        suggestedName={draft?.suggestedName ?? "built-by-builder.ts"}
+        onOpenChange={setSaveDraftOpen}
+        onSave={handleSaveDraft}
+      />
+
       <ResizablePanelGroup
         direction="vertical"
         autoSaveId="k6-studio-layout-v"
@@ -156,7 +205,10 @@ export default function EditorTab({ filename }: EditorTabProps) {
           <ScriptEditor
             ref={editorRef}
             namespace={namespace}
-            filename={filename}
+            filename={isDraft ? undefined : filename ?? undefined}
+            initialContent={isDraft ? draft.content : undefined}
+            appliedContent={appliedContent}
+            onAppliedContentConsumed={clearBuilderAppliedContent}
             onSaveStatusChange={setSaveStatus}
           />
         </ResizablePanel>
@@ -171,7 +223,7 @@ export default function EditorTab({ filename }: EditorTabProps) {
           <Terminal
             lines={session.lines}
             isRunning={session.isRunning}
-            resetKey={filename}
+            resetKey={filename ?? "__draft__"}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -5,6 +5,18 @@ import {
 } from "@/lib/navigation-state";
 
 describe("navigation-state", () => {
+  it("parses and round-trips builder view", () => {
+    expect(parseNavigationState("?view=builder").view).toBe("builder");
+    const search = buildNavigationSearch({
+      namespace: "default",
+      view: "builder",
+      script: null,
+      report: null,
+      reportTab: SUMMARY_REPORT_TAB_ID,
+    });
+    expect(parseNavigationState(search).view).toBe("builder");
+  });
+
   it("parses namespace, view, script, report, and report tab", () => {
     expect(
       parseNavigationState(
